@@ -1,12 +1,12 @@
-import { useState, useEffect } from 'react'
-import type { Project } from '../types/electron'
+import { useState, useEffect, useCallback } from 'react'
+import type { Project, ProjectStatus } from '../types/electron'
 
-export function useProjects(organizationId: number | null) {
+export function useProjects(organizationId: number | null, statusFilter?: ProjectStatus) {
   const [projects, setProjects] = useState<Project[]>([])
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading] = useState(organizationId !== null)
   const [error, setError] = useState<Error | null>(null)
 
-  const loadProjects = async () => {
+  const loadProjects = useCallback(async () => {
     if (!organizationId) {
       setProjects([])
       return
@@ -14,7 +14,7 @@ export function useProjects(organizationId: number | null) {
 
     try {
       setLoading(true)
-      const projs = await window.electronAPI.getProjects(organizationId)
+      const projs = await window.electronAPI.getProjects(organizationId, statusFilter)
       setProjects(projs)
       setError(null)
     } catch (err) {
@@ -22,17 +22,20 @@ export function useProjects(organizationId: number | null) {
     } finally {
       setLoading(false)
     }
-  }
+  }, [organizationId, statusFilter])
 
   useEffect(() => {
+    if (organizationId) {
+      setLoading(true)
+    }
     loadProjects()
-  }, [organizationId])
+  }, [loadProjects, organizationId])
 
-  const addProject = async (name: string, description?: string) => {
+  const addProject = async (name: string, description?: string, status: ProjectStatus = 'in_progress') => {
     if (!organizationId) throw new Error('No organization selected')
     
     try {
-      const newProject = await window.electronAPI.addProject(name, organizationId)
+      const newProject = await window.electronAPI.addProject(name, organizationId, description, status)
       setProjects([...projects, newProject])
       return newProject
     } catch (err) {
@@ -41,11 +44,11 @@ export function useProjects(organizationId: number | null) {
     }
   }
 
-  const updateProject = async (id: number, name: string, description?: string) => {
+  const updateProject = async (id: number, data: { name?: string; description?: string; status?: ProjectStatus }) => {
     try {
-      await window.electronAPI.updateProject(id, name, description)
+      await window.electronAPI.updateProject(id, data)
       setProjects(projects.map((proj: Project) => 
-        proj.id === id ? { ...proj, name, description } : proj
+        proj.id === id ? { ...proj, ...data } : proj
       ))
     } catch (err) {
       setError(err as Error)

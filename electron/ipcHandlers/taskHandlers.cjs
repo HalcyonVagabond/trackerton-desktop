@@ -9,16 +9,19 @@ const {
 } = require('../constants/ipcChannels');
 
 function registerTaskHandlers() {
-  ipcMain.handle(GET_TASKS, async (event, projectId) => {
-    return await TaskController.getTasks(projectId);
+  ipcMain.handle(GET_TASKS, async (event, args) => {
+    const { projectId, statusFilter = null } = args || {};
+    return await TaskController.getTasks(projectId, statusFilter);
   });
 
-  ipcMain.handle(ADD_TASK, async (event, { name, projectId }) => {
-    return await TaskController.createTask(name, projectId);
+  ipcMain.handle(ADD_TASK, async (event, args) => {
+    const { name, projectId, status = 'todo' } = args || {};
+    return await TaskController.createTask(name, projectId, status);
   });
 
-  ipcMain.handle(UPDATE_TASK, async (event, { id, name }) => {
-    return await TaskController.updateTask(id, name);
+  ipcMain.handle(UPDATE_TASK, async (event, args) => {
+    const { id, data } = args || {};
+    return await TaskController.updateTask(id, data);
   });
 
   ipcMain.handle(DELETE_TASK, async (event, id) => {

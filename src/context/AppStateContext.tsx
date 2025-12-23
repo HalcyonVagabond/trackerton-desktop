@@ -1,21 +1,10 @@
 import { createContext, useContext, useEffect, useMemo, useState, useCallback } from 'react';
 import type { ReactNode } from 'react';
-import type { Task } from '../types/electron';
+import type { Task, SelectionState } from '../types/electron';
 import { useTimer } from './TimerContext';
 
-const STORAGE_KEYS = {
-  organization: 'selectedOrganization',
-  project: 'selectedProject',
-  task: 'selectedTask',
-} as const;
-
-const parseStoredId = (value: string | null) => {
-  if (!value) return null;
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : null;
-};
-
 interface AppStateContextValue {
+  // Selection state for menu bar (active timer task)
   selectedOrganizationId: number | null;
   selectedProjectId: number | null;
   selectedTaskId: number | null;
@@ -23,6 +12,16 @@ interface AppStateContextValue {
   setSelectedProjectId: (projectId: number | null) => void;
   setSelectedTaskId: (taskId: number | null) => void;
   setSelection: (organizationId: number | null, projectId: number | null, taskId: number | null) => void;
+  // Browsing state for task manager (doesn't affect timer)
+  browsingOrganizationId: number | null;
+  browsingProjectId: number | null;
+  browsingTaskId: number | null;
+  setBrowsingOrganizationId: (organizationId: number | null) => void;
+  setBrowsingProjectId: (projectId: number | null) => void;
+  setBrowsingTaskId: (taskId: number | null) => void;
+  setBrowsingSelection: (organizationId: number | null, projectId: number | null, taskId: number | null) => void;
+  // Start a task from the browser (stops current timer and starts new one)
+  startTaskFromBrowser: (organizationId: number, projectId: number, taskId: number, task: any) => Promise<void>;
   timer: ReturnType<typeof useTimer>;
   hydrated: boolean;
 }
@@ -42,26 +41,41 @@ const sanitizeSelection = (organizationId: number | null, projectId: number | nu
 
 export function AppStateProvider({ children }: { children: ReactNode }) {
   const timer = useTimer();
+  // Selection state (for menu bar - active timer task)
   const [selectedOrganizationId, setSelectedOrganizationIdState] = useState<number | null>(null);
   const [selectedProjectId, setSelectedProjectIdState] = useState<number | null>(null);
   const [selectedTaskId, setSelectedTaskIdState] = useState<number | null>(null);
+  // Browsing state (for task manager - doesn't affect timer)
+  const [browsingOrganizationId, setBrowsingOrganizationIdState] = useState<number | null>(null);
+  const [browsingProjectId, setBrowsingProjectIdState] = useState<number | null>(null);
+  const [browsingTaskId, setBrowsingTaskIdState] = useState<number | null>(null);
   const [hydrated, setHydrated] = useState(false);
 
+  // Subscribe to selection state updates from main process (shared across windows)
   useEffect(() => {
-    if (typeof window === 'undefined') {
+    const handleSelectionState = (state: SelectionState) => {
+      const sanitized = sanitizeSelection(state.organizationId, state.projectId, state.taskId);
+      setSelectedOrganizationIdState(sanitized.organizationId);
+      setSelectedProjectIdState(sanitized.projectId);
+      setSelectedTaskIdState(sanitized.taskId);
+    };
+
+    const unsubscribe = window.electronAPI.onSelectionState(handleSelectionState);
+
+    // Request initial state from main process
+    window.electronAPI.requestSelectionState().then((state) => {
+      const sanitized = sanitizeSelection(state.organizationId, state.projectId, state.taskId);
+      handleSelectionState(state);
+      // Initialize browsing state to match persisted selection state
+      setBrowsingOrganizationIdState(sanitized.organizationId);
+      setBrowsingProjectIdState(sanitized.projectId);
+      setBrowsingTaskIdState(sanitized.taskId);
       setHydrated(true);
-      return;
-    }
+    });
 
-    const storedOrg = parseStoredId(window.localStorage.getItem(STORAGE_KEYS.organization));
-    const storedProject = parseStoredId(window.localStorage.getItem(STORAGE_KEYS.project));
-    const storedTask = parseStoredId(window.localStorage.getItem(STORAGE_KEYS.task));
-
-    const sanitized = sanitizeSelection(storedOrg, storedProject, storedTask);
-    setSelectedOrganizationIdState(sanitized.organizationId);
-    setSelectedProjectIdState(sanitized.projectId);
-    setSelectedTaskIdState(sanitized.taskId);
-    setHydrated(true);
+    return () => {
+      unsubscribe?.();
+    };
   }, []);
 
   const setSelection = useCallback((organizationId: number | null, projectId: number | null, taskId: number | null) => {
@@ -70,6 +84,9 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     setSelectedOrganizationIdState((prev) => (prev === sanitized.organizationId ? prev : sanitized.organizationId));
     setSelectedProjectIdState((prev) => (prev === sanitized.projectId ? prev : sanitized.projectId));
     setSelectedTaskIdState((prev) => (prev === sanitized.taskId ? prev : sanitized.taskId));
+
+    // Persist to main process (shared across all windows)
+    window.electronAPI.updateSelectionState(sanitized);
   }, []);
 
   const handleSetOrganization = useCallback(
@@ -93,38 +110,53 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     [selectedOrganizationId, selectedProjectId, setSelection],
   );
 
-  useEffect(() => {
-    if (!hydrated || typeof window === 'undefined') {
-      return;
-    }
+  // Browsing state setters (for task manager)
+  const setBrowsingSelection = useCallback((organizationId: number | null, projectId: number | null, taskId: number | null) => {
+    const sanitized = sanitizeSelection(organizationId, projectId, taskId);
+    setBrowsingOrganizationIdState((prev) => (prev === sanitized.organizationId ? prev : sanitized.organizationId));
+    setBrowsingProjectIdState((prev) => (prev === sanitized.projectId ? prev : sanitized.projectId));
+    setBrowsingTaskIdState((prev) => (prev === sanitized.taskId ? prev : sanitized.taskId));
+  }, []);
 
-    try {
-      window.localStorage.setItem(
-        STORAGE_KEYS.organization,
-        selectedOrganizationId ? String(selectedOrganizationId) : '',
-      );
-      window.localStorage.setItem(
-        STORAGE_KEYS.project,
-        selectedProjectId ? String(selectedProjectId) : '',
-      );
-      window.localStorage.setItem(STORAGE_KEYS.task, selectedTaskId ? String(selectedTaskId) : '');
-    } catch (error) {
-      console.error('Failed to persist selection state', error);
-    }
-  }, [selectedOrganizationId, selectedProjectId, selectedTaskId, hydrated]);
+  const handleSetBrowsingOrganization = useCallback(
+    (organizationId: number | null) => {
+      setBrowsingSelection(organizationId, null, null);
+    },
+    [setBrowsingSelection],
+  );
 
-  useEffect(() => {
-    const activeTask: Task | null = timer.task;
-    if (!activeTask || timer.status === 'idle') {
-      return;
-    }
+  const handleSetBrowsingProject = useCallback(
+    (projectId: number | null) => {
+      setBrowsingSelection(browsingOrganizationId, projectId, null);
+    },
+    [browsingOrganizationId, setBrowsingSelection],
+  );
 
-    const organizationId = activeTask.organization_id ?? selectedOrganizationId;
-    const projectId = activeTask.project_id ?? selectedProjectId;
-    const taskId = activeTask.id ?? selectedTaskId;
+  const handleSetBrowsingTask = useCallback(
+    (taskId: number | null) => {
+      setBrowsingSelection(browsingOrganizationId, browsingProjectId, taskId);
+    },
+    [browsingOrganizationId, browsingProjectId, setBrowsingSelection],
+  );
 
-    setSelection(organizationId ?? null, projectId ?? null, taskId ?? null);
-  }, [timer.task, timer.status, setSelection, selectedOrganizationId, selectedProjectId, selectedTaskId]);
+  // Start a task from the browser (stops current and starts new)
+  const startTaskFromBrowser = useCallback(
+    async (organizationId: number, projectId: number, taskId: number, task: any) => {
+      // Stop current task if running
+      if (timer.status === 'running' || timer.status === 'paused') {
+        await timer.stop();
+      }
+
+      // Update selection to the new task
+      setSelection(organizationId, projectId, taskId);
+
+      // Start the timer with the new task
+      timer.start(task);
+    },
+    [timer, setSelection],
+  );
+
+  // Note: Browsing state is initialized directly from persisted selection in the hydration effect above
 
   const value = useMemo<AppStateContextValue>(
     () => ({
@@ -135,10 +167,36 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       setSelectedProjectId: handleSetProject,
       setSelectedTaskId: handleSetTask,
       setSelection,
+      browsingOrganizationId,
+      browsingProjectId,
+      browsingTaskId,
+      setBrowsingOrganizationId: handleSetBrowsingOrganization,
+      setBrowsingProjectId: handleSetBrowsingProject,
+      setBrowsingTaskId: handleSetBrowsingTask,
+      setBrowsingSelection,
+      startTaskFromBrowser,
       timer,
       hydrated,
     }),
-    [selectedOrganizationId, selectedProjectId, selectedTaskId, handleSetOrganization, handleSetProject, handleSetTask, setSelection, timer, hydrated],
+    [
+      selectedOrganizationId,
+      selectedProjectId,
+      selectedTaskId,
+      handleSetOrganization,
+      handleSetProject,
+      handleSetTask,
+      setSelection,
+      browsingOrganizationId,
+      browsingProjectId,
+      browsingTaskId,
+      handleSetBrowsingOrganization,
+      handleSetBrowsingProject,
+      handleSetBrowsingTask,
+      setBrowsingSelection,
+      startTaskFromBrowser,
+      timer,
+      hydrated,
+    ],
   );
 
   return <AppStateContext.Provider value={value}>{children}</AppStateContext.Provider>;

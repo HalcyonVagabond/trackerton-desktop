@@ -29,26 +29,29 @@ const ipcChannels = {
   OPEN_MAIN_WINDOW: 'open-main-window',
   THEME_CHANGE: 'theme-change',
   GET_THEME: 'get-theme',
+  UPDATE_SELECTION_STATE: 'selection-state-update',
+  GET_SELECTION_STATE: 'selection-state-get',
+  SELECTION_STATE: 'selection-state',
 }
 
 // Expose Trackerton API to renderer process
 contextBridge.exposeInMainWorld('electronAPI', {
   // Organizations
-  getOrganizations: () => ipcRenderer.invoke(ipcChannels.GET_ORGANIZATIONS),
-  addOrganization: (name: string) => ipcRenderer.invoke(ipcChannels.ADD_ORGANIZATION, name),
-  updateOrganization: (id: number, name: string) => ipcRenderer.invoke(ipcChannels.UPDATE_ORGANIZATION, { id, name }),
+  getOrganizations: (statusFilter?: string) => ipcRenderer.invoke(ipcChannels.GET_ORGANIZATIONS, statusFilter),
+  addOrganization: (name: string, status = 'active') => ipcRenderer.invoke(ipcChannels.ADD_ORGANIZATION, { name, status }),
+  updateOrganization: (id: number, data: { name?: string; status?: string }) => ipcRenderer.invoke(ipcChannels.UPDATE_ORGANIZATION, { id, data }),
   deleteOrganization: (id: number) => ipcRenderer.invoke(ipcChannels.DELETE_ORGANIZATION, id),
 
   // Projects
-  getProjects: (organizationId: number) => ipcRenderer.invoke(ipcChannels.GET_PROJECTS, organizationId),
-  addProject: (name: string, organizationId: number) => ipcRenderer.invoke(ipcChannels.ADD_PROJECT, { name, organizationId }),
-  updateProject: (id: number, name: string, description = '') => ipcRenderer.invoke(ipcChannels.UPDATE_PROJECT, { id, name, description }),
+  getProjects: (organizationId: number, statusFilter?: string) => ipcRenderer.invoke(ipcChannels.GET_PROJECTS, { organizationId, statusFilter }),
+  addProject: (name: string, organizationId: number, description?: string, status = 'in_progress') => ipcRenderer.invoke(ipcChannels.ADD_PROJECT, { name, organizationId, description, status }),
+  updateProject: (id: number, data: { name?: string; description?: string; status?: string }) => ipcRenderer.invoke(ipcChannels.UPDATE_PROJECT, { id, data }),
   deleteProject: (id: number) => ipcRenderer.invoke(ipcChannels.DELETE_PROJECT, id),
 
   // Tasks
-  getTasks: (projectId: number) => ipcRenderer.invoke(ipcChannels.GET_TASKS, projectId),
-  addTask: (name: string, projectId: number) => ipcRenderer.invoke(ipcChannels.ADD_TASK, { name, projectId }),
-  updateTask: (id: number, name: string) => ipcRenderer.invoke(ipcChannels.UPDATE_TASK, { id, name }),
+  getTasks: (projectId: number, statusFilter?: string) => ipcRenderer.invoke(ipcChannels.GET_TASKS, { projectId, statusFilter }),
+  addTask: (name: string, projectId: number, status = 'todo') => ipcRenderer.invoke(ipcChannels.ADD_TASK, { name, projectId, status }),
+  updateTask: (id: number, data: { name?: string; status?: string }) => ipcRenderer.invoke(ipcChannels.UPDATE_TASK, { id, data }),
   deleteTask: (id: number) => ipcRenderer.invoke(ipcChannels.DELETE_TASK, id),
 
   // Time Entries
@@ -80,12 +83,25 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.removeListener(ipcChannels.TIMER_STATE, listener)
     }
   },
+  updateTimerSavedElapsed: (savedElapsed: number) => ipcRenderer.send('timer-saved-elapsed-update', savedElapsed),
   sendTimerCommand: (command: string) => ipcRenderer.send(ipcChannels.SEND_TIMER_COMMAND, command),
   onTimerCommand: (callback: (command: string) => void) => {
     const listener = (_event: IpcRendererEvent, command: string) => callback(command)
     ipcRenderer.on(ipcChannels.EXECUTE_TIMER_COMMAND, listener)
     return () => {
       ipcRenderer.removeListener(ipcChannels.EXECUTE_TIMER_COMMAND, listener)
+    }
+  },
+
+  // Selection state sharing between windows (persisted in main process)
+  updateSelectionState: (state: { organizationId: number | null; projectId: number | null; taskId: number | null }) => 
+    ipcRenderer.send(ipcChannels.UPDATE_SELECTION_STATE, state),
+  requestSelectionState: () => ipcRenderer.invoke(ipcChannels.GET_SELECTION_STATE),
+  onSelectionState: (callback: (state: { organizationId: number | null; projectId: number | null; taskId: number | null }) => void) => {
+    const listener = (_event: IpcRendererEvent, state: any) => callback(state)
+    ipcRenderer.on(ipcChannels.SELECTION_STATE, listener)
+    return () => {
+      ipcRenderer.removeListener(ipcChannels.SELECTION_STATE, listener)
     }
   },
 })

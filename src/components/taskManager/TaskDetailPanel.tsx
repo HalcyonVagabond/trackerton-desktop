@@ -1,7 +1,8 @@
-import type { Task } from '../../types/electron';
+import type { Task, TaskStatus, ProjectStatus } from '../../types/electron';
 import type { TaskDetail } from '../../types/taskManager';
 import { formatDateTime, formatDuration } from '../../utils/taskManager';
 import type { TimeEntry } from '../../types/electron';
+import { StatusSelector } from './StatusSelector';
 
 interface TaskDetailPanelProps {
   hasOrganization: boolean;
@@ -11,7 +12,9 @@ interface TaskDetailPanelProps {
   taskDetail: TaskDetail | null;
   onProjectNameBlur: (projectId: number, value: string) => void;
   onProjectDescriptionBlur: (projectId: number, value: string) => void;
+  onProjectStatusChange: (projectId: number, status: ProjectStatus) => void;
   onTaskNameBlur: (taskId: number, value: string) => void;
+  onTaskStatusChange: (taskId: number, status: TaskStatus) => void;
   onOpenTimeEntryModal: (entry: TimeEntry) => void;
   onDeleteTimeEntry: (entryId: number) => void;
   timerTask: Task | null;
@@ -22,6 +25,7 @@ interface TaskDetailPanelProps {
   onStartTimer: (task: Task) => void;
   actionDisabled: boolean;
   getRealTimeTotal: (taskId: number, savedDuration: number) => number;
+  projectStatus?: ProjectStatus;
 }
 
 export function TaskDetailPanel({
@@ -32,7 +36,9 @@ export function TaskDetailPanel({
   taskDetail,
   onProjectNameBlur,
   onProjectDescriptionBlur,
+  onProjectStatusChange,
   onTaskNameBlur,
+  onTaskStatusChange,
   onOpenTimeEntryModal,
   onDeleteTimeEntry,
   timerTask,
@@ -43,6 +49,7 @@ export function TaskDetailPanel({
   onStartTimer,
   actionDisabled,
   getRealTimeTotal,
+  projectStatus,
 }: TaskDetailPanelProps) {
   if (!hasOrganization) {
     return (
@@ -102,6 +109,10 @@ export function TaskDetailPanel({
   // Calculate real-time total: saved duration + current unsaved elapsed time
   const realTimeTotal = getRealTimeTotal(taskDetail.id, taskDetail.totalDuration);
 
+  // Check if there's another task currently being tracked
+  const hasActiveTimer = timerTask && timerStatus !== 'idle';
+  const isOtherTaskActive = hasActiveTimer && !isTimerTask;
+
   let primaryActionLabel: string | null = null;
   let primaryActionVariant: 'start' | 'stop' = 'start';
   let primaryActionHandler: (() => void) | null = null;
@@ -121,7 +132,8 @@ export function TaskDetailPanel({
       primaryActionHandler = startSelectedTask;
     }
   } else {
-    primaryActionLabel = 'Start';
+    // Different task - show "Start" or "Switch" depending on if another timer is running
+    primaryActionLabel = isOtherTaskActive ? 'Switch to This Task' : 'Start';
     primaryActionVariant = 'start';
     primaryActionHandler = startSelectedTask;
   }
@@ -130,13 +142,20 @@ export function TaskDetailPanel({
     <div className="panel">
       <div className="panel-header">
         <div style={{ flex: 1 }}>
-          <input
-            type="text"
-            className="project-name-input"
-            defaultValue={taskDetail.projectName}
-            onBlur={(event) => onProjectNameBlur(taskDetail.projectId, event.target.value)}
-            placeholder="Project name"
-          />
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <input
+              type="text"
+              className="project-name-input"
+              defaultValue={taskDetail.projectName}
+              onBlur={(event) => onProjectNameBlur(taskDetail.projectId, event.target.value)}
+              placeholder="Project name"
+            />
+            <StatusSelector
+              type="project"
+              value={projectStatus}
+              onChange={(status) => onProjectStatusChange(taskDetail.projectId, status as ProjectStatus)}
+            />
+          </div>
           <div className="panel-subtitle">
             {entryCount} time entr{entryCount === 1 ? 'y' : 'ies'}
           </div>
@@ -154,13 +173,20 @@ export function TaskDetailPanel({
       <div className="panel-content">
         <div className="task-detail-view">
           <div className="task-detail-header">
-            <input
-              type="text"
-              className="task-detail-name"
-              defaultValue={taskDetail.name}
-              onBlur={(event) => onTaskNameBlur(taskDetail.id, event.target.value)}
-              placeholder="Task name"
-            />
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1 }}>
+              <input
+                type="text"
+                className="task-detail-name"
+                defaultValue={taskDetail.name}
+                onBlur={(event) => onTaskNameBlur(taskDetail.id, event.target.value)}
+                placeholder="Task name"
+              />
+              <StatusSelector
+                type="task"
+                value={taskDetail.status}
+                onChange={(status) => onTaskStatusChange(taskDetail.id, status as TaskStatus)}
+              />
+            </div>
             {primaryActionHandler ? (
               <div className="task-detail-actions">
                 <button

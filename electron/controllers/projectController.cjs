@@ -1,18 +1,16 @@
 const Project = require('../models/project');
 
 class ProjectController {
-  static async createProject(name, organization_id) {
-    console.log('ProjectController.createProject called with name:', name, 'and organization_id:', organization_id)
-    return await Project.create({ name, organization_id });
+  static async createProject(name, organization_id, description = null, status = 'in_progress') {
+    return await Project.create({ name, organization_id, description, status });
   }
 
-  static async getProjects(organization_id) {
-    console.log('\n\nProjectController.getProjects called with organization_id:', organization_id, '\n\n');
-    return await Project.findAll(organization_id);
+  static async getProjects(organization_id, statusFilter = null) {
+    return await Project.findAll(organization_id, statusFilter);
   }
 
-  static async updateProject(id, name, description = '') {
-    return await Project.update(id, { name, description });
+  static async updateProject(id, data) {
+    return await Project.update(id, data);
   }
 
   static async deleteProject(id) {

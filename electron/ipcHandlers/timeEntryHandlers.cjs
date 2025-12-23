@@ -12,7 +12,6 @@ const {
 
 function registerTimeEntryHandlers() {
   ipcMain.on(SAVE_TIME_ENTRY, async (event, timeEntry) => {
-    console.log('Saving time entry:', timeEntry);
     await TimeEntryController.createTimeEntry(
       timeEntry.task_id,
       timeEntry.duration,

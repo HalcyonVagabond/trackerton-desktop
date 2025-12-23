@@ -8,6 +8,7 @@ function initProjectTable() {
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT,
         description TEXT,
+        status TEXT DEFAULT 'in_progress',
         organization_id INTEGER,
         created_at TEXT,
         updated_at TEXT,
@@ -19,8 +20,11 @@ function initProjectTable() {
       } else {
         // Add description column if it doesn't exist (migration)
         db.run(`ALTER TABLE projects ADD COLUMN description TEXT`, (alterErr) => {
-          // Ignore error if column already exists
-          resolve();
+          // Add status column if it doesn't exist (migration)
+          db.run(`ALTER TABLE projects ADD COLUMN status TEXT DEFAULT 'in_progress'`, (statusErr) => {
+            // Ignore errors if columns already exist
+            resolve();
+          });
         });
       }
     });

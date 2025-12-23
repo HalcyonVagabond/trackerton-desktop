@@ -1,5 +1,4 @@
-import { HashRouter, Routes, Route } from 'react-router-dom';
-import { MainWindow } from './pages/MainWindow';
+import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { MenuBarPopup } from './pages/MenuBarPopup';
 import { TaskManager } from './pages/TaskManager';
 import { TimerProvider } from './context/TimerContext';
@@ -11,9 +10,11 @@ function App() {
       <AppStateProvider>
         <HashRouter>
           <Routes>
-            <Route path="/" element={<MainWindow />} />
+            <Route path="/" element={<TaskManager />} />
             <Route path="/menubar" element={<MenuBarPopup />} />
-            <Route path="/task-manager" element={<TaskManager />} />
+            {/* Redirect old routes to home */}
+            <Route path="/task-manager" element={<Navigate to="/" replace />} />
+            <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </HashRouter>
       </AppStateProvider>

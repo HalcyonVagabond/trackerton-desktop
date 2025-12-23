@@ -8,12 +8,11 @@ export function useTimer() {
   const [display, setDisplay] = useState('00:00:00')
   const [task, setTask] = useState<Task | null>(null)
 
-  const intervalRef = useRef<NodeJS.Timeout | null>(null)
-  const startTimeRef = useRef<number>(0)
   const previousElapsedRef = useRef(0)
   const lastStatusRef = useRef<'idle' | 'running' | 'paused'>('idle')
 
-  // Subscribe to timer state updates from other windows
+  // Subscribe to timer state updates from main process
+  // The main process handles all timing to avoid Chromium throttling
   useEffect(() => {
     const handleTimerState = (state: TimerState) => {
       setStatus(state.status)
@@ -40,55 +39,14 @@ export function useTimer() {
     window.electronAPI.requestTimerState().then(handleTimerState)
 
     return () => {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current)
-      }
       unsubscribe?.()
     }
   }, [])
 
-  // Update timer interval
-  useEffect(() => {
-    if (status === 'running') {
-      startTimeRef.current = Date.now() - (elapsedTime * 1000)
-      
-      intervalRef.current = setInterval(() => {
-        const now = Date.now()
-  const elapsed = Math.max(0, Math.floor((now - startTimeRef.current) / 1000))
-  const newDisplay = formatDuration(elapsed)
-        
-        setElapsedTime(elapsed)
-        setDisplay(newDisplay)
-        
-        // Broadcast to other windows
-        window.electronAPI.updateTimerState({
-          status: 'running',
-          elapsedTime: elapsed,
-          display: newDisplay,
-          task,
-          updatedAt: now,
-        })
-      }, 1000)
-    } else {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current)
-        intervalRef.current = null
-      }
-    }
-
-    return () => {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current)
-      }
-    }
-  }, [status, task])
+  // Timer is now managed entirely by the main process to avoid Chromium throttling
+  // when windows are hidden. We just receive updates via IPC.
 
   const setTaskContext = useCallback((newTask: Task | null, initialElapsed = 0) => {
-    if (intervalRef.current) {
-      clearInterval(intervalRef.current)
-      intervalRef.current = null
-    }
-
     if (!newTask) {
       previousElapsedRef.current = 0
       setTask(null)
@@ -161,11 +119,6 @@ export function useTimer() {
   }, [elapsedTime, display, task])
 
   const stop = useCallback(async () => {
-    if (intervalRef.current) {
-      clearInterval(intervalRef.current)
-      intervalRef.current = null
-    }
-
     let saved = false
 
     if (task) {

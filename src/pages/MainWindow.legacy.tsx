@@ -91,6 +91,11 @@ export function MainWindow() {
       return;
     }
 
+    // Don't clear selection while data is still loading
+    if (projectsLoading || tasksLoading) {
+      return;
+    }
+
     if (!selectedOrganizationId) {
       if (selectedProjectId !== null) {
         setProject(null);
@@ -101,7 +106,7 @@ export function MainWindow() {
       return;
     }
 
-    if (!projectsLoading && selectedProjectId !== null) {
+    if (selectedProjectId !== null) {
       const projectExists = projects.some((proj) => proj.id === selectedProjectId);
       if (!projectExists) {
         setProject(null);
@@ -112,7 +117,7 @@ export function MainWindow() {
       }
     }
 
-    if (!tasksLoading && selectedTaskId !== null) {
+    if (selectedTaskId !== null) {
       const taskExists = tasks.some((task) => task.id === selectedTaskId);
       if (!taskExists) {
         setTask(null);

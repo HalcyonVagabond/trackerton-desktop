@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import type { ChangeEvent } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useTheme } from '../hooks/useTheme';
-import type { Organization, Task, TimeEntry } from '../types/electron';
+import type { Organization, Task, TimeEntry, ProjectStatus, TaskStatus } from '../types/electron';
 import type { ProjectWithTasks, TaskDetail, TimeEntryModalState } from '../types/taskManager';
 import { parseNumber } from '../utils/taskManager';
 import { TimeEntryModal } from '../components/taskManager/TimeEntryModal';
@@ -13,7 +13,7 @@ import { LoadingOverlay } from '../components/taskManager/LoadingOverlay';
 import { useAppState } from '../context/AppStateContext';
 import { GenericModal } from '../components/GenericModal';
 import { DeleteConfirmModal } from '../components/DeleteConfirmModal';
-import organizationViewStylesHref from '../organizationView-styles.css?url';
+import '../organizationView-styles.css';
 
 // Modal state types for CRUD operations
 interface CrudModalState {
@@ -38,10 +38,11 @@ export function TaskManager() {
   const { theme } = useTheme();
   const {
     timer,
-    selectedOrganizationId,
-    selectedProjectId,
-    selectedTaskId,
-    setSelection,
+    browsingOrganizationId,
+    browsingProjectId,
+    browsingTaskId,
+    setBrowsingSelection,
+    startTaskFromBrowser,
     hydrated,
   } = useAppState();
   const { status: timerStatus, display: timerDisplay, task: timerTask, start, stop, elapsedTime: timerElapsedTime, getRealTimeTotal } = timer;
@@ -87,30 +88,6 @@ export function TaskManager() {
     document.documentElement.setAttribute('data-theme', theme);
   }, [theme]);
 
-  useEffect(() => {
-    if (typeof document === 'undefined') {
-      return;
-    }
-
-    let link = document.querySelector<HTMLLinkElement>('link[data-trackerton-task-manager-styles="true"]');
-    let ownsLink = false;
-
-    if (!link) {
-      link = document.createElement('link');
-      link.rel = 'stylesheet';
-      link.href = organizationViewStylesHref;
-      link.dataset.trackertonTaskManagerStyles = 'true';
-      document.head.appendChild(link);
-      ownsLink = true;
-    }
-
-    return () => {
-      if (ownsLink && link && document.head.contains(link)) {
-        document.head.removeChild(link);
-      }
-    };
-  }, []);
-
   const loadingLogo = useMemo(
     () => (theme === 'dark' ? '/logo-icon.png' : '/logo-icon-light.png'),
     [theme],
@@ -136,7 +113,7 @@ export function TaskManager() {
       setLoadingTask(true);
       try {
         const [tasks, timeEntries, totalDuration] = await Promise.all([
-          window.electronAPI.getTasks(projectId),
+          window.electronAPI.getTasks(projectId, undefined),
           window.electronAPI.getTimeEntries({ taskId }),
           window.electronAPI.getTotalDurationByTask(taskId),
         ]);
@@ -180,11 +157,11 @@ export function TaskManager() {
     async (organizationId: number, options?: { projectId?: number | null; taskId?: number | null }) => {
       setLoadingProjects(true);
       try {
-        const rawProjects = await window.electronAPI.getProjects(organizationId);
+        const rawProjects = await window.electronAPI.getProjects(organizationId, undefined);
         const projectsWithTasks = await Promise.all(
           rawProjects.map(async (project) => ({
             ...project,
-            tasks: await window.electronAPI.getTasks(project.id),
+            tasks: await window.electronAPI.getTasks(project.id, undefined),
           })),
         );
 
@@ -208,7 +185,7 @@ export function TaskManager() {
           const taskExists = requestedTaskId && projectForSelection?.tasks.some((task) => task.id === requestedTaskId);
           const resolvedTaskId = taskExists ? requestedTaskId : null;
 
-          setSelection(organizationId, requestedProjectId, resolvedTaskId);
+          setBrowsingSelection(organizationId, requestedProjectId, resolvedTaskId);
 
           if (resolvedTaskId) {
             await loadTaskDetails(requestedProjectId, resolvedTaskId, projectForSelection);
@@ -217,7 +194,7 @@ export function TaskManager() {
           }
         } else {
           setExpandedProjects(new Set());
-          setSelection(organizationId, null, null);
+          setBrowsingSelection(organizationId, null, null);
           setTaskDetail(null);
         }
       } catch (error) {
@@ -225,7 +202,7 @@ export function TaskManager() {
         if (isMounted.current) {
           setProjects([]);
           setExpandedProjects(new Set());
-          setSelection(organizationId, null, null);
+          setBrowsingSelection(organizationId, null, null);
           setTaskDetail(null);
         }
       } finally {
@@ -234,7 +211,7 @@ export function TaskManager() {
         }
       }
     },
-    [loadTaskDetails, setSelection],
+    [loadTaskDetails, setBrowsingSelection],
   );
 
   useEffect(() => {
@@ -271,14 +248,14 @@ export function TaskManager() {
     if (shouldUseParams && orgIdFromParams) {
       const projectId = projectIdFromParams ?? null;
       const taskId = taskIdFromParams ?? null;
-      setSelection(orgIdFromParams, projectId, taskId);
+      setBrowsingSelection(orgIdFromParams, projectId, taskId);
       lastLoadedOrganizationId.current = orgIdFromParams;
       void loadProjectsForOrganization(orgIdFromParams, { projectId, taskId });
       return;
     }
 
-    if (organizationExists(selectedOrganizationId)) {
-      const orgId = selectedOrganizationId;
+    if (organizationExists(browsingOrganizationId)) {
+      const orgId = browsingOrganizationId;
       if (!orgId) {
         return;
       }
@@ -286,16 +263,16 @@ export function TaskManager() {
       if (lastLoadedOrganizationId.current !== orgId) {
         lastLoadedOrganizationId.current = orgId;
         void loadProjectsForOrganization(orgId, {
-          projectId: selectedProjectId ?? null,
-          taskId: selectedTaskId ?? null,
+          projectId: browsingProjectId ?? null,
+          taskId: browsingTaskId ?? null,
         });
       }
       return;
     }
 
-    if (!shouldUseParams && selectedOrganizationId) {
+    if (!shouldUseParams && browsingOrganizationId) {
       lastLoadedOrganizationId.current = null;
-      setSelection(null, null, null);
+      setBrowsingSelection(null, null, null);
       setProjects([]);
       setTaskDetail(null);
       setExpandedProjects(new Set());
@@ -304,7 +281,7 @@ export function TaskManager() {
 
     if (lastLoadedOrganizationId.current !== null) {
       lastLoadedOrganizationId.current = null;
-      setSelection(null, null, null);
+      setBrowsingSelection(null, null, null);
       setProjects([]);
       setTaskDetail(null);
       setExpandedProjects(new Set());
@@ -313,61 +290,15 @@ export function TaskManager() {
     hydrated,
     organizations,
     location.search,
-    selectedOrganizationId,
-    selectedProjectId,
-    selectedTaskId,
+    browsingOrganizationId,
+    browsingProjectId,
+    browsingTaskId,
     loadProjectsForOrganization,
-    setSelection,
+    setBrowsingSelection,
   ]);
 
-  useEffect(() => {
-    if (!timerTask || timerStatus === 'idle') {
-      return;
-    }
-
-    const targetOrgId = timerTask.organization_id ?? null;
-    const targetProjectId = timerTask.project_id ?? null;
-    const targetTaskId = timerTask.id ?? null;
-    const effectiveOrgId = targetOrgId ?? selectedOrganizationId ?? null;
-
-    if (targetOrgId && targetOrgId !== selectedOrganizationId) {
-      setSelection(targetOrgId, targetProjectId ?? null, targetTaskId ?? null);
-      lastLoadedOrganizationId.current = targetOrgId;
-      void loadProjectsForOrganization(targetOrgId, {
-        projectId: targetProjectId ?? null,
-        taskId: targetTaskId ?? null,
-      });
-      return;
-    }
-
-    if (targetProjectId && targetProjectId !== selectedProjectId && effectiveOrgId) {
-      setSelection(effectiveOrgId, targetProjectId, targetTaskId ?? null);
-      lastLoadedOrganizationId.current = effectiveOrgId;
-      void loadProjectsForOrganization(effectiveOrgId, {
-        projectId: targetProjectId,
-        taskId: targetTaskId ?? null,
-      });
-      if (targetTaskId) {
-        void loadTaskDetails(targetProjectId, targetTaskId);
-      }
-      return;
-    }
-
-    if (targetTaskId && targetTaskId !== selectedTaskId && selectedProjectId && effectiveOrgId) {
-      setSelection(effectiveOrgId, selectedProjectId, targetTaskId);
-      lastLoadedOrganizationId.current = effectiveOrgId;
-      void loadTaskDetails(selectedProjectId, targetTaskId);
-    }
-  }, [
-    timerTask,
-    timerStatus,
-    selectedOrganizationId,
-    selectedProjectId,
-    selectedTaskId,
-    loadProjectsForOrganization,
-    loadTaskDetails,
-    setSelection,
-  ]);
+  // Removed: We no longer sync browsing state with timer task automatically
+  // The user must explicitly start a task from the browser
 
   useEffect(() => {
     if (!timerTask) {
@@ -379,17 +310,17 @@ export function TaskManager() {
       previousTimerStatus.current === 'running' &&
       timerStatus !== 'running' &&
       timerTask.project_id &&
-      timerTask.id === selectedTaskId
+      timerTask.id === browsingTaskId
     ) {
       void loadTaskDetails(timerTask.project_id, timerTask.id);
     }
 
     previousTimerStatus.current = timerStatus;
-  }, [timerStatus, timerTask, loadTaskDetails, selectedTaskId]);
+  }, [timerStatus, timerTask, loadTaskDetails, browsingTaskId]);
 
   const handleOrganizationChange = async (event: ChangeEvent<HTMLSelectElement>) => {
     const orgId = event.target.value ? Number(event.target.value) : null;
-    setSelection(orgId, null, null);
+    setBrowsingSelection(orgId, null, null);
     setTaskDetail(null);
     setProjects([]);
     setExpandedProjects(new Set());
@@ -418,7 +349,7 @@ export function TaskManager() {
     try {
       const project = projects.find((p) => p.id === projectId);
       if (!project || project.name === trimmed) return;
-      await window.electronAPI.updateProject(projectId, trimmed, project.description || '');
+      await window.electronAPI.updateProject(projectId, { name: trimmed });
       setProjects((prev) =>
         prev.map((p) => (p.id === projectId ? { ...p, name: trimmed } : p)),
       );
@@ -433,7 +364,7 @@ export function TaskManager() {
     try {
       const project = projects.find((p) => p.id === projectId);
       if (!project || (project.description || '') === value) return;
-      await window.electronAPI.updateProject(projectId, project.name, value);
+      await window.electronAPI.updateProject(projectId, { description: value });
       setProjects((prev) =>
         prev.map((p) => (p.id === projectId ? { ...p, description: value } : p)),
       );
@@ -448,12 +379,12 @@ export function TaskManager() {
     const trimmed = value.trim();
     if (!trimmed) return;
     try {
-      const projectId = selectedProjectId;
+      const projectId = browsingProjectId;
       if (!projectId) return;
       const project = projects.find((p) => p.id === projectId);
       const task = project?.tasks.find((t) => t.id === taskId);
       if (!task || task.name === trimmed) return;
-      await window.electronAPI.updateTask(taskId, trimmed);
+      await window.electronAPI.updateTask(taskId, { name: trimmed });
       setProjects((prev) =>
         prev.map((p) =>
           p.id === projectId
@@ -468,12 +399,40 @@ export function TaskManager() {
     }
   };
 
+  const handleProjectStatusChange = async (projectId: number, status: ProjectStatus) => {
+    try {
+      await window.electronAPI.updateProject(projectId, { status });
+      setProjects((prev) =>
+        prev.map((p) => (p.id === projectId ? { ...p, status } : p)),
+      );
+    } catch (error) {
+      console.error('Failed to update project status', error);
+      alert('Failed to update project status');
+    }
+  };
+
+  const handleTaskStatusChange = async (taskId: number, status: TaskStatus) => {
+    try {
+      await window.electronAPI.updateTask(taskId, { status });
+      setProjects((prev) =>
+        prev.map((p) => ({
+          ...p,
+          tasks: p.tasks.map((t) => (t.id === taskId ? { ...t, status } : t)),
+        })),
+      );
+      setTaskDetail((prev) => (prev && prev.id === taskId ? { ...prev, status } : prev));
+    } catch (error) {
+      console.error('Failed to update task status', error);
+      alert('Failed to update task status');
+    }
+  };
+
   const handleTaskSelection = async (projectId: number, taskId: number) => {
-    if (!selectedOrganizationId) {
+    if (!browsingOrganizationId) {
       return;
     }
 
-    setSelection(selectedOrganizationId, projectId, taskId);
+    setBrowsingSelection(browsingOrganizationId, projectId, taskId);
     await loadTaskDetails(projectId, taskId);
   };
 
@@ -488,8 +447,8 @@ export function TaskManager() {
   const handleTimeEntrySave = async ({ duration, timestamp }: { duration: number; timestamp: string }) => {
     if (!modalState.entry) return;
     await window.electronAPI.updateTimeEntry(modalState.entry.id, duration, timestamp);
-    if (selectedProjectId && selectedTaskId) {
-      await loadTaskDetails(selectedProjectId, selectedTaskId);
+    if (browsingProjectId && browsingTaskId) {
+      await loadTaskDetails(browsingProjectId, browsingTaskId);
     }
   };
 
@@ -498,8 +457,8 @@ export function TaskManager() {
     if (!confirmed) return;
     try {
       await window.electronAPI.deleteTimeEntry(entryId);
-      if (selectedProjectId && selectedTaskId) {
-        await loadTaskDetails(selectedProjectId, selectedTaskId);
+      if (browsingProjectId && browsingTaskId) {
+        await loadTaskDetails(browsingProjectId, browsingTaskId);
       }
     } catch (error) {
       console.error('Failed to delete time entry', error);
@@ -520,7 +479,7 @@ export function TaskManager() {
 
       if (saved && activeTask?.project_id && activeTask.id) {
         // Refresh details so the new entry appears instantly for the active task
-        if (activeTask.project_id === selectedProjectId && activeTask.id === selectedTaskId) {
+        if (activeTask.project_id === browsingProjectId && activeTask.id === browsingTaskId) {
           await loadTaskDetails(activeTask.project_id, activeTask.id);
         }
       }
@@ -529,10 +488,10 @@ export function TaskManager() {
     } finally {
       setTimerActionPending(false);
     }
-  }, [timerActionPending, timerStatus, timerTask, stop, selectedProjectId, selectedTaskId, loadTaskDetails]);
+  }, [timerActionPending, timerStatus, timerTask, stop, browsingProjectId, browsingTaskId, loadTaskDetails]);
 
   const handleStartTimer = useCallback(
-    (taskOverride?: Task | null) => {
+    async (taskOverride?: Task | null) => {
       if (timerActionPending) {
         return;
       }
@@ -545,14 +504,29 @@ export function TaskManager() {
 
       setTimerActionPending(true);
       try {
-        start(targetTask);
+        // If starting a different task than the one currently running/paused, use startTaskFromBrowser
+        // which will stop the current task and start the new one
+        const isDifferentTask = timerTask && timerTask.id !== targetTask.id;
+        if (isDifferentTask || (timerStatus !== 'idle' && timerTask?.id !== targetTask.id)) {
+          // Get the organization and project IDs for the task
+          const orgId = targetTask.organization_id ?? browsingOrganizationId;
+          const projId = targetTask.project_id ?? browsingProjectId;
+          if (orgId && projId) {
+            await startTaskFromBrowser(orgId, projId, targetTask.id, targetTask);
+          } else {
+            console.warn('Cannot start task: missing organization or project ID');
+          }
+        } else {
+          // Resume the current task
+          start(targetTask);
+        }
       } catch (error) {
         console.error('Failed to start timer', error);
       } finally {
         setTimerActionPending(false);
       }
     },
-    [timerActionPending, start, timerTask],
+    [timerActionPending, start, timerTask, timerStatus, startTaskFromBrowser, browsingOrganizationId, browsingProjectId],
   );
 
   // CRUD handlers for organizations
@@ -568,42 +542,42 @@ export function TaskManager() {
   }, []);
 
   const handleEditOrganization = useCallback(() => {
-    if (!selectedOrganizationId) {
+    if (!browsingOrganizationId) {
       alert('Please select an organization first');
       return;
     }
-    const org = organizations.find((o) => o.id === selectedOrganizationId);
+    const org = organizations.find((o) => o.id === browsingOrganizationId);
     if (!org) return;
     
     setCrudModal({
       isOpen: true,
       mode: 'edit',
       type: 'organization',
-      id: selectedOrganizationId,
+      id: browsingOrganizationId,
       parentId: null,
       initialName: org.name,
     });
-  }, [selectedOrganizationId, organizations]);
+  }, [browsingOrganizationId, organizations]);
 
   const handleDeleteOrganization = useCallback(() => {
-    if (!selectedOrganizationId) {
+    if (!browsingOrganizationId) {
       alert('Please select an organization first');
       return;
     }
-    const org = organizations.find((o) => o.id === selectedOrganizationId);
+    const org = organizations.find((o) => o.id === browsingOrganizationId);
     if (!org) return;
     
     setDeleteModal({
       isOpen: true,
       type: 'organization',
-      id: selectedOrganizationId,
+      id: browsingOrganizationId,
       name: org.name,
     });
-  }, [selectedOrganizationId, organizations]);
+  }, [browsingOrganizationId, organizations]);
 
   // CRUD handlers for projects
   const handleAddProject = useCallback(() => {
-    if (!selectedOrganizationId) {
+    if (!browsingOrganizationId) {
       alert('Please select an organization first');
       return;
     }
@@ -612,10 +586,10 @@ export function TaskManager() {
       mode: 'add',
       type: 'project',
       id: null,
-      parentId: selectedOrganizationId,
+      parentId: browsingOrganizationId,
       initialName: '',
     });
-  }, [selectedOrganizationId]);
+  }, [browsingOrganizationId]);
 
   const handleEditProject = useCallback((project: ProjectWithTasks) => {
     setCrudModal({
@@ -688,15 +662,15 @@ export function TaskManager() {
           // Add new organization
           const newOrg = await window.electronAPI.addOrganization(trimmed);
           setOrganizations((prev) => [...prev, newOrg]);
-          // Auto-select the new organization
-          setSelection(newOrg.id, null, null);
+          // Auto-select the new organization in browsing state
+          setBrowsingSelection(newOrg.id, null, null);
           lastLoadedOrganizationId.current = newOrg.id;
           setProjects([]);
           setTaskDetail(null);
           setExpandedProjects(new Set());
         } else if (crudModal.mode === 'edit' && crudModal.id) {
           // Edit existing organization
-          await window.electronAPI.updateOrganization(crudModal.id, trimmed);
+          await window.electronAPI.updateOrganization(crudModal.id, { name: trimmed });
           setOrganizations((prev) =>
             prev.map((o) => (o.id === crudModal.id ? { ...o, name: trimmed } : o)),
           );
@@ -715,7 +689,7 @@ export function TaskManager() {
           // Edit existing project
           const project = projects.find((p) => p.id === crudModal.id);
           if (project) {
-            await window.electronAPI.updateProject(crudModal.id, trimmed, project.description || '');
+            await window.electronAPI.updateProject(crudModal.id, { name: trimmed });
             setProjects((prev) =>
               prev.map((p) => (p.id === crudModal.id ? { ...p, name: trimmed } : p)),
             );
@@ -725,7 +699,7 @@ export function TaskManager() {
           }
         }
       } else if (crudModal.type === 'task') {
-        if (crudModal.mode === 'add' && crudModal.parentId && selectedOrganizationId) {
+        if (crudModal.mode === 'add' && crudModal.parentId && browsingOrganizationId) {
           // Add new task
           const newTask = await window.electronAPI.addTask(trimmed, crudModal.parentId);
           setProjects((prev) =>
@@ -741,7 +715,7 @@ export function TaskManager() {
           });
         } else if (crudModal.mode === 'edit' && crudModal.id) {
           // Edit existing task
-          await window.electronAPI.updateTask(crudModal.id, trimmed);
+          await window.electronAPI.updateTask(crudModal.id, { name: trimmed });
           setProjects((prev) =>
             prev.map((p) => ({
               ...p,
@@ -759,7 +733,7 @@ export function TaskManager() {
       console.error(`Failed to ${crudModal.mode} ${crudModal.type}`, error);
       alert(`Failed to ${crudModal.mode} ${crudModal.type}`);
     }
-  }, [crudModal, projects, selectedOrganizationId, closeCrudModal, setSelection]);
+  }, [crudModal, projects, browsingOrganizationId, closeCrudModal, setBrowsingSelection]);
 
   // Handle delete confirmation
   const handleDeleteConfirm = useCallback(async () => {
@@ -770,8 +744,8 @@ export function TaskManager() {
         await window.electronAPI.deleteOrganization(deleteModal.id);
         setOrganizations((prev) => prev.filter((o) => o.id !== deleteModal.id));
         // Clear selection if deleted org was selected
-        if (selectedOrganizationId === deleteModal.id) {
-          setSelection(null, null, null);
+        if (browsingOrganizationId === deleteModal.id) {
+          setBrowsingSelection(null, null, null);
           setProjects([]);
           setTaskDetail(null);
           setExpandedProjects(new Set());
@@ -785,8 +759,8 @@ export function TaskManager() {
         await window.electronAPI.deleteProject(deleteModal.id);
         setProjects((prev) => prev.filter((p) => p.id !== deleteModal.id));
         // Clear selection if deleted project was selected
-        if (selectedProjectId === deleteModal.id) {
-          setSelection(selectedOrganizationId, null, null);
+        if (browsingProjectId === deleteModal.id) {
+          setBrowsingSelection(browsingOrganizationId, null, null);
           setTaskDetail(null);
         }
         // Stop timer if a task in this project was being tracked
@@ -802,8 +776,8 @@ export function TaskManager() {
           })),
         );
         // Clear selection if deleted task was selected
-        if (selectedTaskId === deleteModal.id) {
-          setSelection(selectedOrganizationId, selectedProjectId, null);
+        if (browsingTaskId === deleteModal.id) {
+          setBrowsingSelection(browsingOrganizationId, browsingProjectId, null);
           setTaskDetail(null);
         }
         // Stop timer if deleted task was being tracked
@@ -817,7 +791,7 @@ export function TaskManager() {
       console.error(`Failed to delete ${deleteModal.type}`, error);
       alert(`Failed to delete ${deleteModal.type}`);
     }
-  }, [deleteModal, selectedOrganizationId, selectedProjectId, selectedTaskId, setSelection, timerTask, stop]);
+  }, [deleteModal, browsingOrganizationId, browsingProjectId, browsingTaskId, setBrowsingSelection, timerTask, stop]);
 
   // Close delete modal
   const closeDeleteModal = useCallback(() => {
@@ -835,27 +809,30 @@ export function TaskManager() {
             alt="Trackerton"
             className="app-title__icon"
           />
-          <span>Task Management</span>
+          <span className="app-title__text">Trackerton</span>
         </div>
-        <div className="header-actions">
-          <div className="org-select-group">
-            <select className="org-select" value={selectedOrganizationId ?? ''} onChange={handleOrganizationChange}>
-              <option value="">Select organization…</option>
-              {organizations.map((org) => (
-                <option value={org.id} key={org.id}>
-                  {org.name}
-                </option>
-              ))}
-            </select>
+        <div className="header-right">
+          <select className="org-select" value={browsingOrganizationId?.toString() ?? ''} onChange={handleOrganizationChange}>
+            <option value="">Select organization…</option>
+            {organizations.map((org) => (
+              <option value={org.id.toString()} key={org.id}>
+                {org.name}
+              </option>
+            ))}
+          </select>
+          <div className="org-actions">
             <button
               className="org-action-btn org-action-btn--add"
               onClick={handleAddOrganization}
               title="Add organization"
               type="button"
             >
-              +
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                <line x1="12" y1="5" x2="12" y2="19"></line>
+                <line x1="5" y1="12" x2="19" y2="12"></line>
+              </svg>
             </button>
-            {selectedOrganizationId && (
+            {browsingOrganizationId && (
               <>
                 <button
                   className="org-action-btn org-action-btn--edit"
@@ -863,7 +840,10 @@ export function TaskManager() {
                   title="Edit organization"
                   type="button"
                 >
-                  ✎
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+                  </svg>
                 </button>
                 <button
                   className="org-action-btn org-action-btn--delete"
@@ -871,15 +851,14 @@ export function TaskManager() {
                   title="Delete organization"
                   type="button"
                 >
-                  ✕
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <line x1="18" y1="6" x2="6" y2="18"></line>
+                    <line x1="6" y1="6" x2="18" y2="18"></line>
+                  </svg>
                 </button>
               </>
             )}
           </div>
-          <button className="back-btn" onClick={() => navigate('/')} type="button">
-            <span>←</span>
-            <span>Back</span>
-          </button>
         </div>
       </header>
 
@@ -903,12 +882,12 @@ export function TaskManager() {
           </div>
           <div id="projectsList" className="projects-list">
             <ProjectsSidebar
-              organizationSelected={Boolean(selectedOrganizationId)}
+              organizationSelected={Boolean(browsingOrganizationId)}
               loadingProjects={loadingProjects}
               projects={projects}
               expandedProjects={expandedProjects}
-              selectedProjectId={selectedProjectId}
-              selectedTaskId={selectedTaskId}
+              selectedProjectId={browsingProjectId}
+              selectedTaskId={browsingTaskId}
               onToggleProject={toggleProject}
               onSelectTask={handleTaskSelection}
               timerTask={timerTask}
@@ -927,14 +906,16 @@ export function TaskManager() {
         <main className="main-panel">
           <div id="mainContent">
             <TaskDetailPanel
-              hasOrganization={Boolean(selectedOrganizationId)}
-              hasProject={Boolean(selectedProjectId)}
-              hasTask={Boolean(selectedTaskId)}
+              hasOrganization={Boolean(browsingOrganizationId)}
+              hasProject={Boolean(browsingProjectId)}
+              hasTask={Boolean(browsingTaskId)}
               loadingTask={loadingTask}
               taskDetail={taskDetail}
               onProjectNameBlur={handleProjectNameBlur}
               onProjectDescriptionBlur={handleProjectDescriptionBlur}
+              onProjectStatusChange={handleProjectStatusChange}
               onTaskNameBlur={handleTaskNameBlur}
+              onTaskStatusChange={handleTaskStatusChange}
               onOpenTimeEntryModal={openTimeEntryModal}
               onDeleteTimeEntry={(entryId) => void handleDeleteTimeEntry(entryId)}
               timerTask={timerTask}
@@ -945,6 +926,7 @@ export function TaskManager() {
               onStartTimer={(task: Task) => handleStartTimer(task)}
               actionDisabled={timerActionPending}
               getRealTimeTotal={getRealTimeTotal}
+              projectStatus={projects.find((p) => p.id === browsingProjectId)?.status}
             />
           </div>
         </main>

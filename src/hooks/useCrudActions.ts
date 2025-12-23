@@ -1,5 +1,5 @@
 import { useCallback } from 'react';
-import type { Organization, Project, Task } from '../types/electron';
+import type { Organization, Project, Task, OrganizationStatus, ProjectStatus, TaskStatus } from '../types/electron';
 
 interface UseCrudActionsProps {
   organizations: Organization[];
@@ -8,14 +8,14 @@ interface UseCrudActionsProps {
   selectedOrganizationId: number | null;
   selectedProjectId: number | null;
   selectedTaskId: number | null;
-  addOrganization: (name: string) => Promise<Organization>;
-  updateOrganization: (id: number, name: string) => Promise<void>;
+  addOrganization: (name: string, status?: OrganizationStatus) => Promise<Organization>;
+  updateOrganization: (id: number, data: { name?: string; status?: OrganizationStatus }) => Promise<void>;
   deleteOrganization: (id: number) => Promise<void>;
-  addProject: (name: string, description?: string) => Promise<Project>;
-  updateProject: (id: number, name: string, description?: string) => Promise<void>;
+  addProject: (name: string, description?: string, status?: ProjectStatus) => Promise<Project>;
+  updateProject: (id: number, data: { name?: string; description?: string; status?: ProjectStatus }) => Promise<void>;
   deleteProject: (id: number) => Promise<void>;
-  addTask: (name: string) => Promise<Task>;
-  updateTask: (id: number, name: string) => Promise<void>;
+  addTask: (name: string, status?: TaskStatus) => Promise<Task>;
+  updateTask: (id: number, data: { name?: string; status?: TaskStatus }) => Promise<void>;
   deleteTask: (id: number) => Promise<void>;
   reloadOrgs: () => Promise<void>;
   reloadProjects: () => Promise<void>;
@@ -62,7 +62,7 @@ export function useCrudActions(props: UseCrudActionsProps) {
 
   const handleUpdateOrganization = useCallback(
     async (id: number, name: string) => {
-      await updateOrganization(id, name);
+      await updateOrganization(id, { name });
       await reloadOrgs();
     },
     [updateOrganization, reloadOrgs]
@@ -91,7 +91,7 @@ export function useCrudActions(props: UseCrudActionsProps) {
 
   const handleUpdateProject = useCallback(
     async (id: number, name: string) => {
-      await updateProject(id, name);
+      await updateProject(id, { name });
       await reloadProjects();
     },
     [updateProject, reloadProjects]
@@ -119,7 +119,7 @@ export function useCrudActions(props: UseCrudActionsProps) {
 
   const handleUpdateTask = useCallback(
     async (id: number, name: string) => {
-      await updateTask(id, name);
+      await updateTask(id, { name });
       await reloadTasks();
     },
     [updateTask, reloadTasks]

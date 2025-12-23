@@ -14,41 +14,64 @@ interface TimerContextValue {
   start: (task?: Task) => void;
   pause: () => void;
   stop: () => Promise<boolean>;
+  /** Reset timer completely - clears task and elapsed time */
+  reset: () => void;
   /** Get the real-time total for a task (saved + current elapsed if timer is for this task) */
   getRealTimeTotal: (taskId: number, savedDuration: number) => number;
 }
 
 const TimerContext = createContext<TimerContextValue | undefined>(undefined);
 
+/**
+ * TimerProvider - Manages timer state synchronized with the Electron main process
+ * 
+ * Architecture:
+ * - Main process is the source of truth for timing (avoids Chromium throttling)
+ * - Frontend receives state updates via IPC
+ * - Frontend handles user interactions and time entry saves
+ * - Main process handles quit-time saves for unsaved time
+ * 
+ * Time tracking:
+ * - previousElapsedRef: Local tracking of what elapsed time has been saved to DB
+ * - This syncs with main process's lastSavedElapsed on state updates
+ * - Unsaved time = elapsedTime - previousElapsedRef
+ */
 export function TimerProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<TimerStatus>('idle');
   const [elapsedTime, setElapsedTime] = useState(0);
   const [display, setDisplay] = useState('00:00:00');
   const [task, setTask] = useState<Task | null>(null);
 
-  const intervalRef = useRef<NodeJS.Timeout | null>(null);
-  const startTimeRef = useRef<number>(0);
+  // Track the elapsed time that has been saved to the database
+  // This should stay in sync with main process's lastSavedElapsed
   const previousElapsedRef = useRef(0);
   const lastStatusRef = useRef<TimerStatus>('idle');
+  // Ref for current elapsed time (for use in intervals without stale closures)
+  const elapsedTimeRef = useRef(0);
+  // Track if we've done initial sync
+  const initialSyncDone = useRef(false);
 
-  // Subscribe to timer state updates from other windows
+  // Subscribe to timer state updates from main process
+  // The main process handles all timing to avoid Chromium throttling
   useEffect(() => {
     const handleTimerState = (state: TimerState) => {
       setStatus(state.status);
       setElapsedTime(state.elapsedTime);
+      elapsedTimeRef.current = state.elapsedTime;
       setDisplay(state.display || formatDuration(state.elapsedTime));
       setTask(state.task);
 
-      const statusChanged = lastStatusRef.current !== state.status;
-
-      if (state.status === 'running') {
-        if (statusChanged) {
-          previousElapsedRef.current = state.elapsedTime;
-        }
-      } else {
+      // Sync our local "what's been saved" tracking with main process
+      // This is critical for preventing duplicate saves
+      if (state.lastSavedElapsed !== undefined) {
+        previousElapsedRef.current = state.lastSavedElapsed;
+      } else if (!initialSyncDone.current) {
+        // First sync - if no lastSavedElapsed provided, assume all elapsed time is saved
+        // (this handles the case of restoring from a previous session)
         previousElapsedRef.current = state.elapsedTime;
       }
-
+      
+      initialSyncDone.current = true;
       lastStatusRef.current = state.status;
     };
 
@@ -58,59 +81,16 @@ export function TimerProvider({ children }: { children: ReactNode }) {
     window.electronAPI.requestTimerState().then(handleTimerState);
 
     return () => {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-      }
       unsubscribe?.();
     };
   }, []);
 
-  // Update timer interval
-  useEffect(() => {
-    if (status === 'running') {
-      startTimeRef.current = Date.now() - elapsedTime * 1000;
-
-      intervalRef.current = setInterval(() => {
-        const now = Date.now();
-        const elapsed = Math.max(0, Math.floor((now - startTimeRef.current) / 1000));
-        const newDisplay = formatDuration(elapsed);
-
-        setElapsedTime(elapsed);
-        setDisplay(newDisplay);
-
-        // Broadcast to other windows
-        window.electronAPI.updateTimerState({
-          status: 'running',
-          elapsedTime: elapsed,
-          display: newDisplay,
-          task,
-          updatedAt: now,
-        });
-      }, 1000);
-    } else {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-        intervalRef.current = null;
-      }
-    }
-
-    return () => {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-      }
-    };
-  }, [status, task]);
-
   const setTaskContext = useCallback((newTask: Task | null, initialElapsed = 0) => {
-    if (intervalRef.current) {
-      clearInterval(intervalRef.current);
-      intervalRef.current = null;
-    }
-
     if (!newTask) {
       previousElapsedRef.current = 0;
       setTask(null);
       setElapsedTime(0);
+      elapsedTimeRef.current = 0;
       setDisplay('00:00:00');
       setStatus('idle');
       lastStatusRef.current = 'idle';
@@ -121,6 +101,8 @@ export function TimerProvider({ children }: { children: ReactNode }) {
         task: null,
         updatedAt: Date.now(),
       });
+      // Reset the saved elapsed tracking in main process
+      window.electronAPI.updateTimerSavedElapsed(0);
       return;
     }
 
@@ -128,9 +110,12 @@ export function TimerProvider({ children }: { children: ReactNode }) {
     const nextStatus: TimerStatus = normalizedElapsed > 0 ? 'paused' : 'idle';
     const nextDisplay = formatDuration(normalizedElapsed);
 
+    // When setting a new task context with initial elapsed time,
+    // that time is already saved in the database, so sync our tracking
     previousElapsedRef.current = normalizedElapsed;
     setTask(newTask);
     setElapsedTime(normalizedElapsed);
+    elapsedTimeRef.current = normalizedElapsed;
     setDisplay(nextDisplay);
     setStatus(nextStatus);
     lastStatusRef.current = nextStatus;
@@ -142,6 +127,8 @@ export function TimerProvider({ children }: { children: ReactNode }) {
       task: newTask,
       updatedAt: Date.now(),
     });
+    // Sync saved elapsed with main process
+    window.electronAPI.updateTimerSavedElapsed(normalizedElapsed);
   }, []);
 
   const start = useCallback(
@@ -156,7 +143,6 @@ export function TimerProvider({ children }: { children: ReactNode }) {
       lastStatusRef.current = 'running';
       setTask(taskToUse);
 
-      previousElapsedRef.current = elapsedTime;
       window.electronAPI.updateTimerState({
         status: 'running',
         task: taskToUse,
@@ -181,12 +167,12 @@ export function TimerProvider({ children }: { children: ReactNode }) {
     });
   }, [elapsedTime, display, task]);
 
+  /**
+   * Stop the timer and save any unsaved time to the database.
+   * Returns true if time was saved, false otherwise.
+   * Note: This pauses the timer but keeps the elapsed time - use reset() to clear completely.
+   */
   const stop = useCallback(async () => {
-    if (intervalRef.current) {
-      clearInterval(intervalRef.current);
-      intervalRef.current = null;
-    }
-
     let saved = false;
 
     if (task) {
@@ -198,6 +184,8 @@ export function TimerProvider({ children }: { children: ReactNode }) {
           timestamp: new Date().toISOString(),
         });
         previousElapsedRef.current = elapsedTime;
+        // Notify main process of the save
+        window.electronAPI.updateTimerSavedElapsed(elapsedTime);
         saved = true;
       }
     }
@@ -220,6 +208,42 @@ export function TimerProvider({ children }: { children: ReactNode }) {
     return saved;
   }, [elapsedTime, task]);
 
+  /**
+   * Reset the timer completely - saves any unsaved time, then clears state.
+   * Use this when completely finishing work on a task.
+   */
+  const reset = useCallback(async () => {
+    // First save any unsaved time
+    if (task) {
+      const diff = elapsedTime - previousElapsedRef.current;
+      if (diff > 0) {
+        await window.electronAPI.saveTimeEntry({
+          task_id: task.id,
+          duration: diff,
+          timestamp: new Date().toISOString(),
+        });
+      }
+    }
+
+    // Then clear everything
+    previousElapsedRef.current = 0;
+    setTask(null);
+    setElapsedTime(0);
+    elapsedTimeRef.current = 0;
+    setDisplay('00:00:00');
+    setStatus('idle');
+    lastStatusRef.current = 'idle';
+
+    window.electronAPI.updateTimerState({
+      status: 'idle',
+      elapsedTime: 0,
+      display: '00:00:00',
+      task: null,
+      updatedAt: Date.now(),
+    });
+    window.electronAPI.updateTimerSavedElapsed(0);
+  }, [elapsedTime, task]);
+
   // Listen for timer commands from menubar
   useEffect(() => {
     const handleCommand = (command: string) => {
@@ -229,6 +253,8 @@ export function TimerProvider({ children }: { children: ReactNode }) {
         pause();
       } else if (command === 'stop') {
         void stop();
+      } else if (command === 'reset') {
+        void reset();
       }
     };
 
@@ -236,7 +262,40 @@ export function TimerProvider({ children }: { children: ReactNode }) {
     return () => {
       unsubscribe?.();
     };
-  }, [start, pause, stop]);
+  }, [start, pause, stop, reset]);
+
+  // Auto-save time entries every 15 seconds while running to prevent data loss
+  // This provides crash protection - max 15 seconds of lost time if app crashes
+  useEffect(() => {
+    if (status !== 'running' || !task) {
+      return;
+    }
+
+    const taskId = task.id;
+    const autoSaveInterval = setInterval(async () => {
+      const currentElapsed = elapsedTimeRef.current;
+      const diff = currentElapsed - previousElapsedRef.current;
+      if (diff >= 15) { // Only save if at least 15 seconds accumulated
+        try {
+          await window.electronAPI.saveTimeEntry({
+            task_id: taskId,
+            duration: diff,
+            timestamp: new Date().toISOString(),
+          });
+          previousElapsedRef.current = currentElapsed;
+          // Notify main process of the save so it can track for quit-time saving
+          window.electronAPI.updateTimerSavedElapsed(currentElapsed);
+          console.log(`Auto-saved ${diff} seconds for task ${taskId}`);
+        } catch (error) {
+          console.error('Auto-save failed:', error);
+        }
+      }
+    }, 15000); // Check every 15 seconds
+
+    return () => {
+      clearInterval(autoSaveInterval);
+    };
+  }, [status, task]);
 
   /**
    * Get real-time total duration for a task.
@@ -264,9 +323,10 @@ export function TimerProvider({ children }: { children: ReactNode }) {
       start,
       pause,
       stop,
+      reset,
       getRealTimeTotal,
     }),
-    [status, elapsedTime, display, task, setTaskContext, start, pause, stop, getRealTimeTotal],
+    [status, elapsedTime, display, task, setTaskContext, start, pause, stop, reset, getRealTimeTotal],
   );
 
   return <TimerContext.Provider value={value}>{children}</TimerContext.Provider>;

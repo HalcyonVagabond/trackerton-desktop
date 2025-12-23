@@ -1,5 +1,6 @@
 import type { ProjectWithTasks } from '../../types/taskManager';
 import type { Task } from '../../types/electron';
+import { StatusBadge } from './StatusBadge';
 
 interface ProjectsSidebarProps {
   organizationSelected: boolean;
@@ -94,6 +95,7 @@ export function ProjectsSidebar({
                 >
                   <div className="project-header__name">{project.name}</div>
                   <div className="project-header__meta">
+                    <StatusBadge type="project" status={project.status} size="small" />
                     <span>{project.tasks.length} task{project.tasks.length === 1 ? '' : 's'}</span>
                   </div>
                 </div>
@@ -160,7 +162,10 @@ export function ProjectsSidebar({
                           className="task-item-sidebar__content"
                           onClick={() => onSelectTask(project.id, task.id)}
                         >
-                          <div className="task-item-sidebar__title">{task.name}</div>
+                          <div className="task-item-sidebar__title">
+                            {task.name}
+                            <StatusBadge type="task" status={task.status} size="small" />
+                          </div>
                           {isTimerTask && (
                             <div
                               className={`task-item-sidebar__timer ${

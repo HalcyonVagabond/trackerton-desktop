@@ -9,17 +9,20 @@ const {
 } = require('../constants/ipcChannels');
 
 function registerProjectHandlers() {
-  ipcMain.handle(GET_PROJECTS, async (event, organizationId) => {
-    return await ProjectController.getProjects(organizationId);
+  ipcMain.handle(GET_PROJECTS, async (event, args) => {
+    const { organizationId, statusFilter = null } = args || {};
+    return await ProjectController.getProjects(organizationId, statusFilter);
   });
 
-  ipcMain.handle(ADD_PROJECT, async (event, { name, organizationId }) => {
-    const newProject = await ProjectController.createProject(name, organizationId);
-    return newProject; // Return the new project
+  ipcMain.handle(ADD_PROJECT, async (event, args) => {
+    const { name, organizationId, description = null, status = 'in_progress' } = args || {};
+    const newProject = await ProjectController.createProject(name, organizationId, description, status);
+    return newProject;
   });
 
-  ipcMain.handle(UPDATE_PROJECT, async (event, { id, name, description }) => {
-    return await ProjectController.updateProject(id, name, description);
+  ipcMain.handle(UPDATE_PROJECT, async (event, args) => {
+    const { id, data } = args || {};
+    return await ProjectController.updateProject(id, data);
   });
 
   ipcMain.handle(DELETE_PROJECT, async (event, id) => {

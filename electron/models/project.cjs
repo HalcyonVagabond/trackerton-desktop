@@ -1,33 +1,38 @@
 // src/models/Project.js
 const db = require('../db/database');
 
+// Status types: 'in_progress' | 'on_hold' | 'completed' | 'archived'
 class Project {
-  static create({ name, organization_id }) {
-    console.log('Project.create called with name:', name, 'and organization_id:', organization_id);
+  static create({ name, organization_id, description = null, status = 'in_progress' }) {
     const timestamp = new Date().toISOString();
     return new Promise((resolve, reject) => {
       db.run(
-        `INSERT INTO projects (name, organization_id, created_at, updated_at) VALUES (?, ?, ?, ?)`,
-        [name, organization_id, timestamp, timestamp],
+        `INSERT INTO projects (name, organization_id, description, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)`,
+        [name, organization_id, description, status, timestamp, timestamp],
         function (err) {
           if (err) reject(err);
-          else resolve({ id: this.lastID, name, organization_id, created_at: timestamp, updated_at: timestamp });
+          else resolve({ id: this.lastID, name, organization_id, description, status, created_at: timestamp, updated_at: timestamp });
         }
       );
     });
   }
 
-  static findAll(organization_id) {
-    console.log('Project.findAll called with organization_id:', organization_id);
+  static findAll(organization_id, statusFilter = null) {
     return new Promise((resolve, reject) => {
-      db.all(
-        `SELECT * FROM projects WHERE organization_id = ?`,
-        [organization_id],
-        (err, rows) => {
-          if (err) reject(err);
-          else resolve(rows);
-        }
-      );
+      let query = `SELECT * FROM projects WHERE organization_id = ?`;
+      let params = [organization_id];
+      
+      if (statusFilter) {
+        query += ` AND status = ?`;
+        params.push(statusFilter);
+      }
+      
+      query += ` ORDER BY name ASC`;
+      
+      db.all(query, params, (err, rows) => {
+        if (err) reject(err);
+        else resolve(rows);
+      });
     });
   }
 
@@ -41,15 +46,35 @@ class Project {
     });
   }
 
-  static update(id, { name, description }) {
+  static update(id, data) {
     const timestamp = new Date().toISOString();
     return new Promise((resolve, reject) => {
+      const fields = [];
+      const values = [];
+      
+      if (data.name !== undefined) {
+        fields.push('name = ?');
+        values.push(data.name);
+      }
+      if (data.description !== undefined) {
+        fields.push('description = ?');
+        values.push(data.description);
+      }
+      if (data.status !== undefined) {
+        fields.push('status = ?');
+        values.push(data.status);
+      }
+      
+      fields.push('updated_at = ?');
+      values.push(timestamp);
+      values.push(id);
+      
       db.run(
-        `UPDATE projects SET name = ?, description = ?, updated_at = ? WHERE id = ?`,
-        [name, description || null, timestamp, id],
+        `UPDATE projects SET ${fields.join(', ')} WHERE id = ?`,
+        values,
         function (err) {
           if (err) reject(err);
-          else resolve({ id, name, updated_at: timestamp });
+          else resolve({ id, ...data, updated_at: timestamp });
         }
       );
     });

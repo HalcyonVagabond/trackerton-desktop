@@ -1,15 +1,15 @@
-import { useState, useEffect } from 'react'
-import type { Organization } from '../types/electron'
+import { useState, useEffect, useCallback } from 'react'
+import type { Organization, OrganizationStatus } from '../types/electron'
 
-export function useOrganizations() {
+export function useOrganizations(statusFilter?: OrganizationStatus) {
   const [organizations, setOrganizations] = useState<Organization[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<Error | null>(null)
 
-  const loadOrganizations = async () => {
+  const loadOrganizations = useCallback(async () => {
     try {
       setLoading(true)
-      const orgs = await window.electronAPI.getOrganizations()
+      const orgs = await window.electronAPI.getOrganizations(statusFilter)
       setOrganizations(orgs)
       setError(null)
     } catch (err) {
@@ -17,15 +17,15 @@ export function useOrganizations() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [statusFilter])
 
   useEffect(() => {
     loadOrganizations()
-  }, [])
+  }, [loadOrganizations])
 
-  const addOrganization = async (name: string) => {
+  const addOrganization = async (name: string, status: OrganizationStatus = 'active') => {
     try {
-      const newOrg = await window.electronAPI.addOrganization(name)
+      const newOrg = await window.electronAPI.addOrganization(name, status)
       setOrganizations([...organizations, newOrg])
       return newOrg
     } catch (err) {
@@ -34,11 +34,11 @@ export function useOrganizations() {
     }
   }
 
-  const updateOrganization = async (id: number, name: string) => {
+  const updateOrganization = async (id: number, data: { name?: string; status?: OrganizationStatus }) => {
     try {
-      await window.electronAPI.updateOrganization(id, name)
+      await window.electronAPI.updateOrganization(id, data)
       setOrganizations(organizations.map(org => 
-        org.id === id ? { ...org, name } : org
+        org.id === id ? { ...org, ...data } : org
       ))
     } catch (err) {
       setError(err as Error)

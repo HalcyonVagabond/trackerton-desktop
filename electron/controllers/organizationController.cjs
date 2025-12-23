@@ -1,16 +1,16 @@
 const Organization = require('../models/organization');
 
 class OrganizationController {
-  static async createOrganization(name) {
-    return await Organization.create({ name });
+  static async createOrganization(name, status = 'active') {
+    return await Organization.create({ name, status });
   }
 
-  static async getOrganizations() {
-    return await Organization.findAll();
+  static async getOrganizations(statusFilter = null) {
+    return await Organization.findAll(statusFilter);
   }
 
-  static async updateOrganization(id, name) {
-    return await Organization.update(id, { name });
+  static async updateOrganization(id, data) {
+    return await Organization.update(id, data);
   }
 
   static async deleteOrganization(id) {

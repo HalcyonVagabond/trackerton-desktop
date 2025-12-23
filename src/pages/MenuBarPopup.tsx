@@ -61,24 +61,29 @@ export function MenuBarPopup() {
   useEffect(() => {
     if (!hydrated) return;
 
+    // Don't clear selection while data is still loading initially
+    if (orgsLoading) return;
+    if (selectedOrganizationId && projectsLoading) return;
+    if (selectedProjectId && tasksLoading) return;
+
     if (!selectedOrganizationId) {
       if (selectedProjectId !== null) setProject(null);
       if (selectedTaskId !== null) setTask(null);
       return;
     }
 
-    if (!projectsLoading && selectedProjectId !== null) {
+    if (selectedProjectId !== null) {
       const projectExists = projects.some((proj) => proj.id === selectedProjectId);
-      if (!projectExists) {
+      if (!projectExists && !projectsLoading) {
         setProject(null);
         if (selectedTaskId !== null) setTask(null);
         return;
       }
     }
 
-    if (!tasksLoading && selectedTaskId !== null) {
+    if (selectedTaskId !== null) {
       const taskExists = tasks.some((task) => task.id === selectedTaskId);
-      if (!taskExists) setTask(null);
+      if (!taskExists && !tasksLoading) setTask(null);
     }
   }, [
     hydrated,
@@ -87,6 +92,7 @@ export function MenuBarPopup() {
     selectedTaskId,
     projects,
     tasks,
+    orgsLoading,
     projectsLoading,
     tasksLoading,
     setProject,

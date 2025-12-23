@@ -1,12 +1,12 @@
-import { useState, useEffect } from 'react'
-import type { Task } from '../types/electron'
+import { useState, useEffect, useCallback } from 'react'
+import type { Task, TaskStatus } from '../types/electron'
 
-export function useTasks(projectId: number | null) {
+export function useTasks(projectId: number | null, statusFilter?: TaskStatus) {
   const [tasks, setTasks] = useState<Task[]>([])
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading] = useState(projectId !== null)
   const [error, setError] = useState<Error | null>(null)
 
-  const loadTasks = async () => {
+  const loadTasks = useCallback(async () => {
     if (!projectId) {
       setTasks([])
       return
@@ -14,7 +14,7 @@ export function useTasks(projectId: number | null) {
 
     try {
       setLoading(true)
-      const taskList = await window.electronAPI.getTasks(projectId)
+      const taskList = await window.electronAPI.getTasks(projectId, statusFilter)
       setTasks(taskList)
       setError(null)
     } catch (err) {
@@ -22,17 +22,20 @@ export function useTasks(projectId: number | null) {
     } finally {
       setLoading(false)
     }
-  }
+  }, [projectId, statusFilter])
 
   useEffect(() => {
+    if (projectId) {
+      setLoading(true)
+    }
     loadTasks()
-  }, [projectId])
+  }, [loadTasks, projectId])
 
-  const addTask = async (name: string) => {
+  const addTask = async (name: string, status: TaskStatus = 'todo') => {
     if (!projectId) throw new Error('No project selected')
     
     try {
-      const newTask = await window.electronAPI.addTask(name, projectId)
+      const newTask = await window.electronAPI.addTask(name, projectId, status)
       setTasks([...tasks, newTask])
       return newTask
     } catch (err) {
@@ -41,11 +44,11 @@ export function useTasks(projectId: number | null) {
     }
   }
 
-  const updateTask = async (id: number, name: string) => {
+  const updateTask = async (id: number, data: { name?: string; status?: TaskStatus }) => {
     try {
-      await window.electronAPI.updateTask(id, name)
+      await window.electronAPI.updateTask(id, data)
       setTasks(tasks.map((task: Task) => 
-        task.id === id ? { ...task, name } : task
+        task.id === id ? { ...task, ...data } : task
       ))
     } catch (err) {
       setError(err as Error)
