@@ -24,6 +24,20 @@ release
 *.sln
 *.sw?
 
+# Large media files (demo gifs, etc)
+*.gif
+image.png
+electron-vite-react*.gif
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# User data (timer state, selection state)
+timer-state.json
+selection-state.json
+
 #lockfile
 package-lock.json
 pnpm-lock.yaml
