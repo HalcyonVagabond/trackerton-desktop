@@ -1,45 +1,69 @@
 import { useState, useEffect } from 'react'
 
+export type ThemeMode = 'light' | 'dark' | 'system';
+
+function getSystemTheme(): 'light' | 'dark' {
+  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+}
+
+function applyTheme(theme: 'light' | 'dark') {
+  if (theme === 'dark') {
+    document.documentElement.classList.add('dark');
+    document.documentElement.setAttribute('data-theme', 'dark');
+  } else {
+    document.documentElement.classList.remove('dark');
+    document.documentElement.setAttribute('data-theme', 'light');
+  }
+}
+
 export function useTheme() {
-  const [theme, setTheme] = useState<'light' | 'dark'>('light')
+  const [mode, setMode] = useState<ThemeMode>(() => {
+    const saved = localStorage.getItem('theme-mode') as ThemeMode | null;
+    return saved || 'system';
+  });
+  
+  const [resolvedTheme, setResolvedTheme] = useState<'light' | 'dark'>(() => {
+    const saved = localStorage.getItem('theme-mode') as ThemeMode | null;
+    if (saved === 'light' || saved === 'dark') return saved;
+    return getSystemTheme();
+  });
 
   useEffect(() => {
-    // Get initial theme
-    window.electronAPI.getTheme().then(setTheme)
-
-    // Listen for theme changes
-    window.electronAPI.onThemeChange((newTheme) => {
-      setTheme(newTheme as 'light' | 'dark')
-      
-      // Update document class
-      if (newTheme === 'dark') {
-        document.documentElement.classList.add('dark')
-        document.documentElement.setAttribute('data-theme', 'dark')
-      } else {
-        document.documentElement.classList.remove('dark')
-        document.documentElement.setAttribute('data-theme', 'light')
-      }
-    })
-  }, [])
-
-  const toggleTheme = () => {
-    const newTheme = theme === 'light' ? 'dark' : 'light'
-    setTheme(newTheme)
-    window.electronAPI.sendThemeChange(newTheme)
+    // Calculate resolved theme
+    const resolved = mode === 'system' ? getSystemTheme() : mode;
+    setResolvedTheme(resolved);
+    applyTheme(resolved);
+    localStorage.setItem('theme-mode', mode);
     
-    // Update document class immediately
-    if (newTheme === 'dark') {
-      document.documentElement.classList.add('dark')
-      document.documentElement.setAttribute('data-theme', 'dark')
-    } else {
-      document.documentElement.classList.remove('dark')
-      document.documentElement.setAttribute('data-theme', 'light')
-    }
-  }
+    // Notify electron
+    window.electronAPI?.sendThemeChange?.(resolved);
+  }, [mode]);
+
+  useEffect(() => {
+    // Listen for system theme changes
+    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+    
+    const handleChange = () => {
+      if (mode === 'system') {
+        const systemTheme = getSystemTheme();
+        setResolvedTheme(systemTheme);
+        applyTheme(systemTheme);
+        window.electronAPI?.sendThemeChange?.(systemTheme);
+      }
+    };
+    
+    mediaQuery.addEventListener('change', handleChange);
+    return () => mediaQuery.removeEventListener('change', handleChange);
+  }, [mode]);
+
+  const setTheme = (newMode: ThemeMode) => {
+    setMode(newMode);
+  };
 
   return {
-    theme,
-    toggleTheme,
-    isDark: theme === 'dark',
-  }
+    mode,
+    theme: resolvedTheme,
+    setTheme,
+    isDark: resolvedTheme === 'dark',
+  };
 }

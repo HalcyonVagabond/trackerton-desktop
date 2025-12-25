@@ -14,6 +14,7 @@ interface TaskDetailPanelProps {
   onProjectDescriptionBlur: (projectId: number, value: string) => void;
   onProjectStatusChange: (projectId: number, status: ProjectStatus) => void;
   onTaskNameBlur: (taskId: number, value: string) => void;
+  onTaskDescriptionBlur: (taskId: number, value: string) => void;
   onTaskStatusChange: (taskId: number, status: TaskStatus) => void;
   onOpenTimeEntryModal: (entry: TimeEntry) => void;
   onDeleteTimeEntry: (entryId: number) => void;
@@ -38,6 +39,7 @@ export function TaskDetailPanel({
   onProjectDescriptionBlur,
   onProjectStatusChange,
   onTaskNameBlur,
+  onTaskDescriptionBlur,
   onTaskStatusChange,
   onOpenTimeEntryModal,
   onDeleteTimeEntry,
@@ -200,6 +202,15 @@ export function TaskDetailPanel({
               </div>
             ) : null}
           </div>
+          <div className="task-description">
+            <div className="description-label">Task Description</div>
+            <textarea
+              className="description-textarea"
+              defaultValue={taskDetail.description ?? ''}
+              onBlur={(event) => onTaskDescriptionBlur(taskDetail.id, event.target.value)}
+              placeholder="Add a task description…"
+            />
+          </div>
           <div className="task-stats">
             <div className="stat-item">
               <div className="stat-label">Total Time</div>
@@ -246,8 +257,13 @@ export function TaskDetailPanel({
               taskDetail.timeEntries.map((entry) => (
                 <div className="time-entry" key={entry.id}>
                   <div className="time-entry__info">
-                    <span className="time-entry__duration">{formatDuration(entry.duration)}</span>
-                    <span className="time-entry__timestamp">{formatDateTime(entry.timestamp)}</span>
+                    <div className="time-entry__row">
+                      <span className="time-entry__duration">{formatDuration(entry.duration)}</span>
+                      <span className="time-entry__timestamp">{formatDateTime(entry.timestamp)}</span>
+                    </div>
+                    {entry.notes && (
+                      <span className="time-entry__notes">{entry.notes}</span>
+                    )}
                   </div>
                   <div className="time-entry__actions">
                     <button className="btn-text btn-text--edit" onClick={() => onOpenTimeEntryModal(entry)}>

@@ -6,14 +6,14 @@ import type { Organization, Task, TimeEntry, ProjectStatus, TaskStatus } from '.
 import type { ProjectWithTasks, TaskDetail, TimeEntryModalState } from '../types/taskManager';
 import { parseNumber } from '../utils/taskManager';
 import { TimeEntryModal } from '../components/taskManager/TimeEntryModal';
-import { ProjectsSidebar } from '../components/taskManager/ProjectsSidebar';
-import { TaskDetailPanel } from '../components/taskManager/TaskDetailPanel';
-import { CurrentTaskBanner } from '../components/taskManager/CurrentTaskBanner';
 import { LoadingOverlay } from '../components/taskManager/LoadingOverlay';
 import { useAppState } from '../context/AppStateContext';
 import { GenericModal } from '../components/GenericModal';
 import { DeleteConfirmModal } from '../components/DeleteConfirmModal';
-import '../organizationView-styles.css';
+import { NavPanel } from '../components/layout/NavPanel';
+import { ContentPanel } from '../components/layout/ContentPanel';
+import { DetailPanel } from '../components/layout/DetailPanel';
+import '../styles/app-layout.css';
 
 // Modal state types for CRUD operations
 interface CrudModalState {
@@ -35,7 +35,7 @@ interface DeleteModalState {
 export function TaskManager() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { theme } = useTheme();
+  const { theme, mode: themeMode, setTheme } = useTheme();
   const {
     timer,
     browsingOrganizationId,
@@ -56,6 +56,12 @@ export function TaskManager() {
   const [loadingTask, setLoadingTask] = useState(false);
   const [modalState, setModalState] = useState<TimeEntryModalState>({ isOpen: false, entry: null });
   const [timerActionPending, setTimerActionPending] = useState(false);
+  const [detailPanelOpen, setDetailPanelOpen] = useState(false);
+  const [projectTotalTime, setProjectTotalTime] = useState(0);
+  
+  // Status filter states
+  const [projectStatusFilter, setProjectStatusFilter] = useState<ProjectStatus | ''>('');
+  const [taskStatusFilter, setTaskStatusFilter] = useState<TaskStatus | ''>('');
   
   // CRUD modal states
   const [crudModal, setCrudModal] = useState<CrudModalState>({
@@ -92,6 +98,22 @@ export function TaskManager() {
     () => (theme === 'dark' ? '/logo-icon.png' : '/logo-icon-light.png'),
     [theme],
   );
+
+  // Filter projects and tasks based on status filters
+  const filteredProjects = useMemo(() => {
+    return projects
+      .filter((project) => {
+        if (!projectStatusFilter) return true;
+        return project.status === projectStatusFilter;
+      })
+      .map((project) => ({
+        ...project,
+        tasks: project.tasks.filter((task) => {
+          if (!taskStatusFilter) return true;
+          return task.status === taskStatusFilter;
+        }),
+      }));
+  }, [projects, projectStatusFilter, taskStatusFilter]);
 
   const timerContext = useMemo(() => {
     if (!timerTask) {
@@ -318,6 +340,36 @@ export function TaskManager() {
     previousTimerStatus.current = timerStatus;
   }, [timerStatus, timerTask, loadTaskDetails, browsingTaskId]);
 
+  // Calculate project total time when project changes
+  useEffect(() => {
+    const loadProjectTotalTime = async () => {
+      if (!browsingProjectId) {
+        setProjectTotalTime(0);
+        return;
+      }
+      
+      const project = projects.find(p => p.id === browsingProjectId);
+      if (!project || !project.tasks || project.tasks.length === 0) {
+        setProjectTotalTime(0);
+        return;
+      }
+      
+      try {
+        // Sum up all task durations for this project
+        const taskDurations = await Promise.all(
+          project.tasks.map(task => window.electronAPI.getTotalDurationByTask(task.id))
+        );
+        const total = taskDurations.reduce((sum, duration) => sum + (duration || 0), 0);
+        setProjectTotalTime(total);
+      } catch (error) {
+        console.error('Failed to load project total time:', error);
+        setProjectTotalTime(0);
+      }
+    };
+    
+    void loadProjectTotalTime();
+  }, [browsingProjectId, projects, taskDetail]); // Re-run when taskDetail changes (new time entries)
+
   const handleOrganizationChange = async (event: ChangeEvent<HTMLSelectElement>) => {
     const orgId = event.target.value ? Number(event.target.value) : null;
     setBrowsingSelection(orgId, null, null);
@@ -399,6 +451,31 @@ export function TaskManager() {
     }
   };
 
+  const handleTaskDescriptionBlur = async (taskId: number, value: string) => {
+    try {
+      const projectId = browsingProjectId;
+      if (!projectId) return;
+      const project = projects.find((p) => p.id === projectId);
+      const task = project?.tasks.find((t) => t.id === taskId);
+      if (!task) return;
+      // Allow empty descriptions
+      const newDescription = value.trim() || null;
+      if (task.description === newDescription) return;
+      await window.electronAPI.updateTask(taskId, { description: newDescription ?? undefined });
+      setProjects((prev) =>
+        prev.map((p) =>
+          p.id === projectId
+            ? { ...p, tasks: p.tasks.map((t) => (t.id === taskId ? { ...t, description: newDescription } : t)) }
+            : p,
+        ),
+      );
+      setTaskDetail((prev) => (prev && prev.id === taskId ? { ...prev, description: newDescription } : prev));
+    } catch (error) {
+      console.error('Failed to update task description', error);
+      alert('Failed to update task description');
+    }
+  };
+
   const handleProjectStatusChange = async (projectId: number, status: ProjectStatus) => {
     try {
       await window.electronAPI.updateProject(projectId, { status });
@@ -434,6 +511,11 @@ export function TaskManager() {
 
     setBrowsingSelection(browsingOrganizationId, projectId, taskId);
     await loadTaskDetails(projectId, taskId);
+    setDetailPanelOpen(true);
+  };
+  
+  const closeDetailPanel = () => {
+    setDetailPanelOpen(false);
   };
 
   const openTimeEntryModal = (entry: TimeEntry) => {
@@ -444,9 +526,9 @@ export function TaskManager() {
     setModalState({ isOpen: false, entry: null });
   };
 
-  const handleTimeEntrySave = async ({ duration, timestamp }: { duration: number; timestamp: string }) => {
+  const handleTimeEntrySave = async ({ duration, timestamp, notes }: { duration: number; timestamp: string; notes?: string }) => {
     if (!modalState.entry) return;
-    await window.electronAPI.updateTimeEntry(modalState.entry.id, duration, timestamp);
+    await window.electronAPI.updateTimeEntry(modalState.entry.id, { duration, timestamp, notes });
     if (browsingProjectId && browsingTaskId) {
       await loadTaskDetails(browsingProjectId, browsingTaskId);
     }
@@ -591,7 +673,9 @@ export function TaskManager() {
     });
   }, [browsingOrganizationId]);
 
-  const handleEditProject = useCallback((project: ProjectWithTasks) => {
+  const handleEditProject = useCallback((projectId: number) => {
+    const project = projectsRef.current.find(p => p.id === projectId);
+    if (!project) return;
     setCrudModal({
       isOpen: true,
       mode: 'edit',
@@ -602,7 +686,9 @@ export function TaskManager() {
     });
   }, []);
 
-  const handleDeleteProject = useCallback((project: ProjectWithTasks) => {
+  const handleDeleteProject = useCallback((projectId: number) => {
+    const project = projectsRef.current.find(p => p.id === projectId);
+    if (!project) return;
     setDeleteModal({
       isOpen: true,
       type: 'project',
@@ -623,7 +709,14 @@ export function TaskManager() {
     });
   }, []);
 
-  const handleEditTask = useCallback((task: Task) => {
+  const handleEditTask = useCallback((taskId: number) => {
+    // Find the task in any project
+    let task: Task | undefined;
+    for (const project of projectsRef.current) {
+      task = project.tasks.find(t => t.id === taskId);
+      if (task) break;
+    }
+    if (!task) return;
     setCrudModal({
       isOpen: true,
       mode: 'edit',
@@ -634,7 +727,14 @@ export function TaskManager() {
     });
   }, []);
 
-  const handleDeleteTask = useCallback((task: Task) => {
+  const handleDeleteTask = useCallback((taskId: number) => {
+    // Find the task in any project
+    let task: Task | undefined;
+    for (const project of projectsRef.current) {
+      task = project.tasks.find(t => t.id === taskId);
+      if (task) break;
+    }
+    if (!task) return;
     setDeleteModal({
       isOpen: true,
       type: 'task',
@@ -798,143 +898,130 @@ export function TaskManager() {
     setDeleteModal(null);
   }, []);
 
+  // Reorder projects (local state only - persists until refresh)
+  const handleReorderProjects = useCallback((projectId: number, newIndex: number) => {
+    setProjects(prevProjects => {
+      const projectIndex = prevProjects.findIndex(p => p.id === projectId);
+      if (projectIndex === -1 || projectIndex === newIndex) return prevProjects;
+      
+      const newProjects = [...prevProjects];
+      const [removed] = newProjects.splice(projectIndex, 1);
+      newProjects.splice(newIndex, 0, removed);
+      return newProjects;
+    });
+  }, []);
+
+  // Reorder tasks within a project (local state only - persists until refresh)
+  const handleReorderTasks = useCallback((taskId: number, projectId: number, newIndex: number) => {
+    setProjects(prevProjects => {
+      return prevProjects.map(project => {
+        if (project.id !== projectId) return project;
+        
+        const taskIndex = project.tasks.findIndex(t => t.id === taskId);
+        if (taskIndex === -1 || taskIndex === newIndex) return project;
+        
+        const newTasks = [...project.tasks];
+        const [removed] = newTasks.splice(taskIndex, 1);
+        newTasks.splice(newIndex, 0, removed);
+        
+        return { ...project, tasks: newTasks };
+      });
+    });
+  }, []);
+
   return (
-    <div className="organization-view">
+    <div className="app-layout" data-theme={theme}>
       <LoadingOverlay visible={isOverlayVisible} logoSrc={loadingLogo} />
 
-      <header className="app-header">
-        <div className="app-title">
-          <img
-            src={theme === 'dark' ? '/logo-icon.png' : '/logo-icon-light.png'}
-            alt="Trackerton"
-            className="app-title__icon"
-          />
-          <span className="app-title__text">Trackerton</span>
-        </div>
-        <div className="header-right">
-          <select className="org-select" value={browsingOrganizationId?.toString() ?? ''} onChange={handleOrganizationChange}>
-            <option value="">Select organization…</option>
-            {organizations.map((org) => (
-              <option value={org.id.toString()} key={org.id}>
-                {org.name}
-              </option>
-            ))}
-          </select>
-          <div className="org-actions">
-            <button
-              className="org-action-btn org-action-btn--add"
-              onClick={handleAddOrganization}
-              title="Add organization"
-              type="button"
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-                <line x1="12" y1="5" x2="12" y2="19"></line>
-                <line x1="5" y1="12" x2="19" y2="12"></line>
-              </svg>
-            </button>
-            {browsingOrganizationId && (
-              <>
-                <button
-                  className="org-action-btn org-action-btn--edit"
-                  onClick={handleEditOrganization}
-                  title="Edit organization"
-                  type="button"
-                >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
-                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
-                  </svg>
-                </button>
-                <button
-                  className="org-action-btn org-action-btn--delete"
-                  onClick={handleDeleteOrganization}
-                  title="Delete organization"
-                  type="button"
-                >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <line x1="18" y1="6" x2="6" y2="18"></line>
-                    <line x1="6" y1="6" x2="18" y2="18"></line>
-                  </svg>
-                </button>
-              </>
-            )}
-          </div>
-        </div>
-      </header>
+      {/* Left Navigation Panel */}
+      <NavPanel
+        organizations={organizations}
+        selectedOrgId={browsingOrganizationId}
+        onSelectOrg={(id) => {
+          setBrowsingSelection(id, null, null);
+          setTaskDetail(null);
+          setProjects([]);
+          setExpandedProjects(new Set());
+          lastLoadedOrganizationId.current = id;
+          void loadProjectsForOrganization(id, { projectId: null, taskId: null });
+        }}
+        onAddOrg={handleAddOrganization}
+        onEditOrg={handleEditOrganization}
+        onDeleteOrg={handleDeleteOrganization}
+        projectStatusFilter={projectStatusFilter as ProjectStatus | null}
+        taskStatusFilter={taskStatusFilter as TaskStatus | null}
+        onProjectStatusFilterChange={(status) => setProjectStatusFilter(status || '')}
+        onTaskStatusFilterChange={(status) => setTaskStatusFilter(status || '')}
+        projects={filteredProjects}
+        expandedProjects={expandedProjects}
+        selectedProjectId={browsingProjectId}
+        selectedTaskId={browsingTaskId}
+        onToggleProject={toggleProject}
+        onSelectProject={(projectId) => {
+          if (browsingOrganizationId) {
+            setBrowsingSelection(browsingOrganizationId, projectId, null);
+            setTaskDetail(null);
+          }
+        }}
+        onSelectTask={handleTaskSelection}
+        onAddProject={handleAddProject}
+        onEditProject={handleEditProject}
+        onDeleteProject={handleDeleteProject}
+        onAddTask={handleAddTask}
+        onEditTask={handleEditTask}
+        onDeleteTask={handleDeleteTask}
+        timerTask={timerTask}
+        timerStatus={timerStatus}
+        themeMode={themeMode}
+        onThemeChange={setTheme}
+        loading={loadingProjects}
+      />
 
-      {timerTask && timerStatus !== 'idle' ? (
-        <CurrentTaskBanner
-          taskName={timerTask.name}
-          timerDisplay={timerDisplay}
-          timerStatus={timerStatus === 'running' ? 'running' : 'paused'}
-          projectName={timerContext.projectName}
-          organizationName={timerContext.organizationName}
-          onStop={() => void handleStopTimer()}
-          onResume={() => handleStartTimer(timerTask)}
-          actionDisabled={timerActionPending}
-        />
-      ) : null}
+      {/* Main Content Panel */}
+      <ContentPanel
+        hasOrganization={Boolean(browsingOrganizationId)}
+        hasProject={Boolean(browsingProjectId)}
+        selectedTaskId={browsingTaskId}
+        project={projects.find((p) => p.id === browsingProjectId) || null}
+        projectTotalTime={projectTotalTime}
+        timerTask={timerTask}
+        timerStatus={timerStatus}
+        timerDisplay={timerDisplay}
+        onProjectNameChange={(name) => browsingProjectId && handleProjectNameBlur(browsingProjectId, name)}
+        onProjectDescriptionChange={(desc) => browsingProjectId && handleProjectDescriptionBlur(browsingProjectId, desc)}
+        onProjectStatusChange={(status) => browsingProjectId && handleProjectStatusChange(browsingProjectId, status)}
+        onSelectTask={(taskId) => browsingProjectId && handleTaskSelection(browsingProjectId, taskId)}
+        onAddTask={() => browsingProjectId && handleAddTask(browsingProjectId)}
+        onEditTask={handleEditTask}
+        onDeleteTask={handleDeleteTask}
+        onStartTimer={handleStartTimer}
+        onStopTimer={() => void handleStopTimer()}
+        actionDisabled={timerActionPending}
+      />
 
-      <div className="main-layout">
-        <aside className="sidebar">
-          <div className="sidebar-header">
-            <h2 className="sidebar-title">Projects</h2>
-          </div>
-          <div id="projectsList" className="projects-list">
-            <ProjectsSidebar
-              organizationSelected={Boolean(browsingOrganizationId)}
-              loadingProjects={loadingProjects}
-              projects={projects}
-              expandedProjects={expandedProjects}
-              selectedProjectId={browsingProjectId}
-              selectedTaskId={browsingTaskId}
-              onToggleProject={toggleProject}
-              onSelectTask={handleTaskSelection}
-              timerTask={timerTask}
-              timerStatus={timerStatus}
-              timerDisplay={timerDisplay}
-              onAddProject={handleAddProject}
-              onEditProject={handleEditProject}
-              onDeleteProject={handleDeleteProject}
-              onAddTask={handleAddTask}
-              onEditTask={handleEditTask}
-              onDeleteTask={handleDeleteTask}
-            />
-          </div>
-        </aside>
+      {/* Right Detail Panel */}
+      <DetailPanel
+        isOpen={detailPanelOpen}
+        onClose={closeDetailPanel}
+        taskDetail={taskDetail}
+        loadingTask={loadingTask}
+        timerTask={timerTask}
+        timerStatus={timerStatus}
+        timerDisplay={timerDisplay}
+        getRealTimeTotal={getRealTimeTotal}
+        onTaskNameChange={(name) => browsingTaskId && handleTaskNameBlur(browsingTaskId, name)}
+        onTaskDescriptionChange={(desc) => browsingTaskId && handleTaskDescriptionBlur(browsingTaskId, desc)}
+        onTaskStatusChange={(status) => browsingTaskId && handleTaskStatusChange(browsingTaskId, status)}
+        onStartTimer={handleStartTimer}
+        onStopTimer={() => void handleStopTimer()}
+        onEditTimeEntry={openTimeEntryModal}
+        onDeleteTimeEntry={(entryId) => void handleDeleteTimeEntry(entryId)}
+        actionDisabled={timerActionPending}
+      />
 
-        <main className="main-panel">
-          <div id="mainContent">
-            <TaskDetailPanel
-              hasOrganization={Boolean(browsingOrganizationId)}
-              hasProject={Boolean(browsingProjectId)}
-              hasTask={Boolean(browsingTaskId)}
-              loadingTask={loadingTask}
-              taskDetail={taskDetail}
-              onProjectNameBlur={handleProjectNameBlur}
-              onProjectDescriptionBlur={handleProjectDescriptionBlur}
-              onProjectStatusChange={handleProjectStatusChange}
-              onTaskNameBlur={handleTaskNameBlur}
-              onTaskStatusChange={handleTaskStatusChange}
-              onOpenTimeEntryModal={openTimeEntryModal}
-              onDeleteTimeEntry={(entryId) => void handleDeleteTimeEntry(entryId)}
-              timerTask={timerTask}
-              timerStatus={timerStatus}
-              timerDisplay={timerDisplay}
-              timerElapsedTime={timerElapsedTime}
-              onStopTimer={() => void handleStopTimer()}
-              onStartTimer={(task: Task) => handleStartTimer(task)}
-              actionDisabled={timerActionPending}
-              getRealTimeTotal={getRealTimeTotal}
-              projectStatus={projects.find((p) => p.id === browsingProjectId)?.status}
-            />
-          </div>
-        </main>
-      </div>
-
+      {/* Modals */}
       <TimeEntryModal state={modalState} onClose={closeTimeEntryModal} onSave={handleTimeEntrySave} />
 
-      {/* CRUD Modal for Projects and Tasks */}
       <GenericModal
         isOpen={crudModal.isOpen}
         type={crudModal.type}
@@ -944,7 +1031,6 @@ export function TaskManager() {
         onClose={closeCrudModal}
       />
 
-      {/* Delete Confirmation Modal */}
       {deleteModal && (
         <DeleteConfirmModal
           isOpen={deleteModal.isOpen}

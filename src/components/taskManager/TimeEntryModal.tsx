@@ -5,7 +5,7 @@ import type { TimeEntryModalState } from '../../types/taskManager';
 interface TimeEntryModalProps {
   state: TimeEntryModalState;
   onClose: () => void;
-  onSave: (payload: { duration: number; timestamp: string }) => Promise<void>;
+  onSave: (payload: { duration: number; timestamp: string; notes?: string }) => Promise<void>;
 }
 
 export function TimeEntryModal({ state, onClose, onSave }: TimeEntryModalProps) {
@@ -14,6 +14,7 @@ export function TimeEntryModal({ state, onClose, onSave }: TimeEntryModalProps) 
   const [minutes, setMinutes] = useState('0');
   const [seconds, setSeconds] = useState('0');
   const [timestamp, setTimestamp] = useState('');
+  const [notes, setNotes] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -23,6 +24,7 @@ export function TimeEntryModal({ state, onClose, onSave }: TimeEntryModalProps) 
       setMinutes('0');
       setSeconds('0');
       setTimestamp('');
+      setNotes('');
       setError(null);
       setSaving(false);
       return;
@@ -32,6 +34,7 @@ export function TimeEntryModal({ state, onClose, onSave }: TimeEntryModalProps) 
     setMinutes(String(m));
     setSeconds(String(s));
     setTimestamp(isoToLocalInput(entry.timestamp));
+    setNotes(entry.notes ?? '');
     setError(null);
     setSaving(false);
   }, [entry]);
@@ -58,7 +61,11 @@ export function TimeEntryModal({ state, onClose, onSave }: TimeEntryModalProps) 
 
     setSaving(true);
     try {
-      await onSave({ duration, timestamp: localInputToIso(timestamp) });
+      await onSave({ 
+        duration, 
+        timestamp: localInputToIso(timestamp),
+        notes: notes.trim() || undefined
+      });
       onClose();
     } catch (err) {
       console.error(err);
@@ -77,58 +84,82 @@ export function TimeEntryModal({ state, onClose, onSave }: TimeEntryModalProps) 
         }
       }}
     >
-      <div className="modal-content">
+      <div className="modal-content time-entry-modal">
         <h3 className="modal-title">Edit Time Entry</h3>
-        <div className="time-input-group">
-          <div className="time-input-field">
-            <label className="time-input-label" htmlFor="hoursInput">Hours</label>
-            <input
-              id="hoursInput"
-              type="number"
-              className="time-input"
-              min={0}
-              max={999}
-              value={hours}
-              onChange={(e) => setHours(e.target.value)}
-            />
-          </div>
-          <div className="time-input-field">
-            <label className="time-input-label" htmlFor="minutesInput">Minutes</label>
-            <input
-              id="minutesInput"
-              type="number"
-              className="time-input"
-              min={0}
-              max={59}
-              value={minutes}
-              onChange={(e) => setMinutes(e.target.value)}
-            />
-          </div>
-          <div className="time-input-field">
-            <label className="time-input-label" htmlFor="secondsInput">Seconds</label>
-            <input
-              id="secondsInput"
-              type="number"
-              className="time-input"
-              min={0}
-              max={59}
-              value={seconds}
-              onChange={(e) => setSeconds(e.target.value)}
-            />
+        
+        <div className="time-entry-modal__section">
+          <label className="time-entry-modal__label">Duration</label>
+          <div className="time-entry-modal__duration">
+            <div className="time-entry-modal__duration-field">
+              <input
+                id="hoursInput"
+                type="number"
+                className="time-entry-modal__duration-input"
+                min={0}
+                max={999}
+                value={hours}
+                onChange={(e) => setHours(e.target.value)}
+              />
+              <span className="time-entry-modal__duration-unit">h</span>
+            </div>
+            <span className="time-entry-modal__duration-sep">:</span>
+            <div className="time-entry-modal__duration-field">
+              <input
+                id="minutesInput"
+                type="number"
+                className="time-entry-modal__duration-input"
+                min={0}
+                max={59}
+                value={minutes}
+                onChange={(e) => setMinutes(e.target.value)}
+              />
+              <span className="time-entry-modal__duration-unit">m</span>
+            </div>
+            <span className="time-entry-modal__duration-sep">:</span>
+            <div className="time-entry-modal__duration-field">
+              <input
+                id="secondsInput"
+                type="number"
+                className="time-entry-modal__duration-input"
+                min={0}
+                max={59}
+                value={seconds}
+                onChange={(e) => setSeconds(e.target.value)}
+              />
+              <span className="time-entry-modal__duration-unit">s</span>
+            </div>
           </div>
         </div>
-        <label className="settings-label" htmlFor="timestampInput" style={{ marginTop: '1rem' }}>
-          Timestamp
-        </label>
-        <input
-          id="timestampInput"
-          type="datetime-local"
-          className="modal-input"
-          value={timestamp}
-          onChange={(e) => setTimestamp(e.target.value)}
-        />
+
+        <div className="time-entry-modal__section">
+          <label className="time-entry-modal__label" htmlFor="timestampInput">
+            Timestamp
+          </label>
+          <input
+            id="timestampInput"
+            type="datetime-local"
+            className="time-entry-modal__input"
+            value={timestamp}
+            onChange={(e) => setTimestamp(e.target.value)}
+          />
+        </div>
+
+        <div className="time-entry-modal__section">
+          <label className="time-entry-modal__label" htmlFor="notesInput">
+            Notes
+          </label>
+          <textarea
+            id="notesInput"
+            className="time-entry-modal__textarea"
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            placeholder="What did you work on?"
+            rows={3}
+          />
+        </div>
+
         {error && (
-          <div style={{ color: '#b91c1c', marginTop: '0.75rem', fontSize: '0.9rem' }}>{error}</div>
+          <div className="time-entry-modal__error">{error}</div>
         )}
         <div className="modal-actions">
           <button className="btn btn--cancel" onClick={onClose} disabled={saving}>

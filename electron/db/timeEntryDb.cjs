@@ -9,11 +9,19 @@ function initTimeEntryTable() {
         task_id INTEGER,
         duration INTEGER,
         timestamp TEXT,
+        notes TEXT,
         FOREIGN KEY (task_id) REFERENCES tasks (id)
       )
     `, (err) => {
-      if (err) reject(err);
-      else resolve();
+      if (err) {
+        reject(err);
+      } else {
+        // Add notes column if it doesn't exist (migration for existing databases)
+        db.run(`ALTER TABLE time_entries ADD COLUMN notes TEXT`, () => {
+          // Ignore error if column already exists
+          resolve();
+        });
+      }
     });
   });
 }

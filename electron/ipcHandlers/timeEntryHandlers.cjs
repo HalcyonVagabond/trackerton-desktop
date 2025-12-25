@@ -15,7 +15,8 @@ function registerTimeEntryHandlers() {
     await TimeEntryController.createTimeEntry(
       timeEntry.task_id,
       timeEntry.duration,
-      timeEntry.timestamp
+      timeEntry.timestamp,
+      timeEntry.notes
     );
   });
 
@@ -23,8 +24,9 @@ function registerTimeEntryHandlers() {
     return await TimeEntryController.getTimeEntries(filter);
   });
 
-  ipcMain.handle(UPDATE_TIME_ENTRY, async (event, { id, duration, timestamp }) => {
-    return await TimeEntryController.updateTimeEntry(id, duration, timestamp);
+  ipcMain.handle(UPDATE_TIME_ENTRY, async (event, data) => {
+    const { id, duration, timestamp, notes } = data;
+    return await TimeEntryController.updateTimeEntry(id, { duration, timestamp, notes });
   });
 
   ipcMain.handle(DELETE_TIME_ENTRY, async (event, id) => {

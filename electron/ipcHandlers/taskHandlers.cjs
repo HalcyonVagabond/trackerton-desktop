@@ -15,8 +15,8 @@ function registerTaskHandlers() {
   });
 
   ipcMain.handle(ADD_TASK, async (event, args) => {
-    const { name, projectId, status = 'todo' } = args || {};
-    return await TaskController.createTask(name, projectId, status);
+    const { name, projectId, description = null, status = 'todo' } = args || {};
+    return await TaskController.createTask(name, projectId, description, status);
   });
 
   ipcMain.handle(UPDATE_TASK, async (event, args) => {

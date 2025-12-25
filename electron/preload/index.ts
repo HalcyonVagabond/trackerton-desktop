@@ -50,14 +50,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // Tasks
   getTasks: (projectId: number, statusFilter?: string) => ipcRenderer.invoke(ipcChannels.GET_TASKS, { projectId, statusFilter }),
-  addTask: (name: string, projectId: number, status = 'todo') => ipcRenderer.invoke(ipcChannels.ADD_TASK, { name, projectId, status }),
-  updateTask: (id: number, data: { name?: string; status?: string }) => ipcRenderer.invoke(ipcChannels.UPDATE_TASK, { id, data }),
+  addTask: (name: string, projectId: number, description?: string, status = 'todo') => ipcRenderer.invoke(ipcChannels.ADD_TASK, { name, projectId, description, status }),
+  updateTask: (id: number, data: { name?: string; description?: string; status?: string }) => ipcRenderer.invoke(ipcChannels.UPDATE_TASK, { id, data }),
   deleteTask: (id: number) => ipcRenderer.invoke(ipcChannels.DELETE_TASK, id),
 
   // Time Entries
   saveTimeEntry: (data: any) => ipcRenderer.send(ipcChannels.SAVE_TIME_ENTRY, data),
   getTimeEntries: (filter: any) => ipcRenderer.invoke(ipcChannels.GET_TIME_ENTRIES, filter),
-  updateTimeEntry: (id: number, duration: number, timestamp: string) => ipcRenderer.invoke(ipcChannels.UPDATE_TIME_ENTRY, { id, duration, timestamp }),
+  updateTimeEntry: (id: number, data: { duration?: number; timestamp?: string; notes?: string }) => ipcRenderer.invoke(ipcChannels.UPDATE_TIME_ENTRY, { id, ...data }),
   deleteTimeEntry: (id: number) => ipcRenderer.invoke(ipcChannels.DELETE_TIME_ENTRY, id),
   getLatestTimeEntry: (taskId: number) => ipcRenderer.invoke(ipcChannels.GET_LATEST_TIME_ENTRY, taskId),
   getTotalDurationByTask: (taskId: number) => ipcRenderer.invoke(ipcChannels.GET_TOTAL_DURATION_BY_TASK, taskId),
@@ -72,6 +72,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   
   // Window Management
   openMainWindow: () => ipcRenderer.send(ipcChannels.OPEN_MAIN_WINDOW),
+  resizeMenuBarWindow: (width: number, height: number) => ipcRenderer.send('resize-menubar-window', { width, height }),
 
   // Timer state sharing between windows
   updateTimerState: (state: any) => ipcRenderer.send(ipcChannels.UPDATE_TIMER_STATE, state),
