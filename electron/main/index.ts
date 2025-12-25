@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Tray, Menu, nativeImage, Notification, ipcMain } from 'electron'
+import { app, BrowserWindow, Tray, Menu, nativeImage, Notification, ipcMain, powerMonitor } from 'electron'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import os from 'node:os'
@@ -253,6 +253,11 @@ ipcMain.on('theme-change', (_event, theme) => {
 
 ipcMain.handle('get-theme', () => currentTheme)
 
+// System idle time for auto-pause feature
+ipcMain.handle('get-system-idle-time', () => {
+  return powerMonitor.getSystemIdleTime()
+})
+
 // Selection state - persisted across windows and app restarts
 let selectionStateFilePath: string | null = null
 
@@ -315,6 +320,17 @@ ipcMain.handle('selection-state-get', () => selectionState)
 ipcMain.on('timer-command', (_event, command) => {
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send('timer-command-execute', command)
+  }
+})
+
+// Show system notification
+ipcMain.on('show-notification', (_event, { title, body }) => {
+  if (Notification.isSupported()) {
+    const notification = new Notification({
+      title: title || 'Trackerton',
+      body: body || '',
+    })
+    notification.show()
   }
 })
 

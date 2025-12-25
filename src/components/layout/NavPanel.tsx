@@ -2,6 +2,7 @@ import { useState, useMemo, useRef, useEffect } from 'react';
 import type { ProjectWithTasks } from '../../types/taskManager';
 import type { ProjectStatus, TaskStatus, Task } from '../../types/electron';
 import { formatDuration } from '../../utils/taskManager';
+import { IDLE_THRESHOLD_OPTIONS, type AutoPauseSettings } from '../../hooks/useAutoPause';
 
 // Simple dropdown menu component
 function DropdownMenu({ 
@@ -47,9 +48,12 @@ interface NavPanelProps {
   // Organization
   organizations: { id: number; name: string; status?: string }[];
   selectedOrgId: number | null;
+  selectedOrgStatus?: string;
   onSelectOrg: (id: number) => void;
   onAddOrg: () => void;
   onEditOrg: () => void;
+  onArchiveOrg: () => void;
+  onUnarchiveOrg: () => void;
   onDeleteOrg: () => void;
   
   // Filters
@@ -78,8 +82,14 @@ interface NavPanelProps {
   timerStatus: 'idle' | 'running' | 'paused';
   
   // Theme
+  effectiveTheme: 'light' | 'dark';
   themeMode: 'light' | 'dark' | 'system';
   onThemeChange: (mode: 'light' | 'dark' | 'system') => void;
+  
+  // Auto-pause settings
+  autoPauseSettings: AutoPauseSettings;
+  onAutoPauseToggle: () => void;
+  onAutoPauseThresholdChange: (threshold: number) => void;
   
   // Loading
   loading: boolean;
@@ -122,9 +132,12 @@ function getStatusLabel(status?: string): string {
 export function NavPanel({
   organizations,
   selectedOrgId,
+  selectedOrgStatus,
   onSelectOrg,
   onAddOrg,
   onEditOrg,
+  onArchiveOrg,
+  onUnarchiveOrg,
   onDeleteOrg,
   projectStatusFilter,
   taskStatusFilter,
@@ -145,8 +158,12 @@ export function NavPanel({
   onDeleteTask,
   timerTask,
   timerStatus,
+  effectiveTheme,
   themeMode,
   onThemeChange,
+  autoPauseSettings,
+  onAutoPauseToggle,
+  onAutoPauseThresholdChange,
   loading,
 }: NavPanelProps) {
   const [orgMenuOpen, setOrgMenuOpen] = useState(false);
@@ -167,7 +184,7 @@ export function NavPanel({
     <nav className="nav-panel">
       {/* App Logo */}
       <div className="nav-brand">
-        <img src="/logo-icon-light.png" alt="Trackerton" className="nav-brand__logo" />
+        <img src={effectiveTheme === 'dark' ? '/logo-icon-light.png' : '/logo-icon-dark.png'} alt="Trackerton" className="nav-brand__logo" />
         <span className="nav-brand__title">Trackerton</span>
         <div style={{ marginLeft: 'auto', position: 'relative' }}>
           <button
@@ -200,6 +217,31 @@ export function NavPanel({
               <span className="dropdown-menu__icon">💻</span>
               System
             </button>
+            
+            <div className="dropdown-menu__divider" />
+            <div className="dropdown-menu__label">Auto-Pause</div>
+            <button
+              className={`dropdown-menu__item ${autoPauseSettings.enabled ? 'dropdown-menu__item--active' : ''}`}
+              onClick={onAutoPauseToggle}
+            >
+              <span className="dropdown-menu__icon">{autoPauseSettings.enabled ? '✓' : ''}</span>
+              {autoPauseSettings.enabled ? 'Enabled' : 'Disabled'}
+            </button>
+            {autoPauseSettings.enabled && (
+              <>
+                <div className="dropdown-menu__sublabel">Pause after idle</div>
+                {IDLE_THRESHOLD_OPTIONS.map(option => (
+                  <button
+                    key={option.value}
+                    className={`dropdown-menu__item dropdown-menu__item--indent ${autoPauseSettings.idleThreshold === option.value ? 'dropdown-menu__item--active' : ''}`}
+                    onClick={() => onAutoPauseThresholdChange(option.value)}
+                  >
+                    <span className="dropdown-menu__icon">{autoPauseSettings.idleThreshold === option.value ? '•' : ''}</span>
+                    {option.label}
+                  </button>
+                ))}
+              </>
+            )}
           </DropdownMenu>
         </div>
       </div>
@@ -248,16 +290,41 @@ export function NavPanel({
                   <span className="dropdown-menu__icon">✎</span>
                   Edit Organization
                 </button>
-                <button 
-                  className="dropdown-menu__item dropdown-menu__item--danger"
-                  onClick={() => {
-                    setOrgMenuOpen(false);
-                    onDeleteOrg();
-                  }}
-                >
-                  <span className="dropdown-menu__icon">🗑</span>
-                  Delete Organization
-                </button>
+                {selectedOrgStatus === 'archived' ? (
+                  <>
+                    <button 
+                      className="dropdown-menu__item"
+                      onClick={() => {
+                        setOrgMenuOpen(false);
+                        onUnarchiveOrg();
+                      }}
+                    >
+                      <span className="dropdown-menu__icon">📤</span>
+                      Restore Organization
+                    </button>
+                    <button 
+                      className="dropdown-menu__item dropdown-menu__item--danger"
+                      onClick={() => {
+                        setOrgMenuOpen(false);
+                        onDeleteOrg();
+                      }}
+                    >
+                      <span className="dropdown-menu__icon">🗑</span>
+                      Delete Permanently
+                    </button>
+                  </>
+                ) : (
+                  <button 
+                    className="dropdown-menu__item dropdown-menu__item--warning"
+                    onClick={() => {
+                      setOrgMenuOpen(false);
+                      onArchiveOrg();
+                    }}
+                  >
+                    <span className="dropdown-menu__icon">📦</span>
+                    Archive Organization
+                  </button>
+                )}
               </DropdownMenu>
             </div>
           )}

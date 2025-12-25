@@ -104,6 +104,12 @@ export interface ElectronAPI {
   updateSelectionState: (state: SelectionState) => void
   requestSelectionState: () => Promise<SelectionState>
   onSelectionState: (callback: (state: SelectionState) => void) => (() => void) | void
+
+  // System idle time for auto-pause feature
+  getSystemIdleTime: () => Promise<number>
+
+  // System notifications
+  showNotification: (title: string, body: string) => void
 }
 
 declare global {

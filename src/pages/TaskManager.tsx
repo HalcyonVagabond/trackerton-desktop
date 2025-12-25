@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import type { ChangeEvent } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useTheme } from '../hooks/useTheme';
+import { useAutoPause } from '../hooks/useAutoPause';
 import type { Organization, Task, TimeEntry, ProjectStatus, TaskStatus } from '../types/electron';
 import type { ProjectWithTasks, TaskDetail, TimeEntryModalState } from '../types/taskManager';
 import { parseNumber } from '../utils/taskManager';
@@ -45,7 +46,19 @@ export function TaskManager() {
     startTaskFromBrowser,
     hydrated,
   } = useAppState();
-  const { status: timerStatus, display: timerDisplay, task: timerTask, start, stop, elapsedTime: timerElapsedTime, getRealTimeTotal } = timer;
+  const { status: timerStatus, display: timerDisplay, task: timerTask, start, stop, pause: timerPause, elapsedTime: timerElapsedTime, getRealTimeTotal } = timer;
+
+  // Auto-pause hook - pauses timer when system is idle
+  const handleAutoPause = useCallback(() => {
+    if (timerStatus === 'running') {
+      timerPause();
+    }
+  }, [timerStatus, timerPause]);
+
+  const { settings: autoPauseSettings, toggleEnabled: toggleAutoPause, updateSettings: updateAutoPauseSettings } = useAutoPause(
+    timerStatus === 'running',
+    handleAutoPause
+  );
 
   const [organizations, setOrganizations] = useState<Organization[]>([]);
   const [projects, setProjects] = useState<ProjectWithTasks[]>([]);
@@ -95,7 +108,7 @@ export function TaskManager() {
   }, [theme]);
 
   const loadingLogo = useMemo(
-    () => (theme === 'dark' ? '/logo-icon.png' : '/logo-icon-light.png'),
+    () => (theme === 'dark' ? '/logo-icon-light.png' : '/logo-icon-dark.png'),
     [theme],
   );
 
@@ -129,6 +142,19 @@ export function TaskManager() {
       organizationName: organization?.name,
     };
   }, [timerTask, projects, organizations]);
+
+  // Calculate real-time project total (saved time + running timer if applicable)
+  const realTimeProjectTotal = useMemo(() => {
+    // Start with the saved project total time
+    let total = projectTotalTime;
+    
+    // If timer is running/paused for a task in the current project, add the elapsed time
+    if (timerTask && timerTask.project_id === browsingProjectId && timerStatus !== 'idle') {
+      total += timerElapsedTime;
+    }
+    
+    return total;
+  }, [projectTotalTime, timerTask, browsingProjectId, timerStatus, timerElapsedTime]);
 
   const loadTaskDetails = useCallback(
     async (projectId: number, taskId: number, projectOverride?: ProjectWithTasks | null) => {
@@ -641,6 +667,47 @@ export function TaskManager() {
     });
   }, [browsingOrganizationId, organizations]);
 
+  const handleArchiveOrganization = useCallback(async () => {
+    if (!browsingOrganizationId) {
+      alert('Please select an organization first');
+      return;
+    }
+    const org = organizations.find((o) => o.id === browsingOrganizationId);
+    if (!org) return;
+    
+    try {
+      await window.electronAPI.updateOrganization(browsingOrganizationId, { status: 'archived' });
+      setOrganizations((prev) => 
+        prev.map((o) => o.id === browsingOrganizationId ? { ...o, status: 'archived' } : o)
+      );
+      // If timer is running for a task in this org, stop it
+      if (timerTask?.organization_id === browsingOrganizationId) {
+        stop();
+      }
+      window.electronAPI.showNotification('Organization Archived', `"${org.name}" has been archived`);
+    } catch (err) {
+      console.error('Failed to archive organization:', err);
+      alert('Failed to archive organization');
+    }
+  }, [browsingOrganizationId, organizations, timerTask, stop]);
+
+  const handleUnarchiveOrganization = useCallback(async () => {
+    if (!browsingOrganizationId) return;
+    const org = organizations.find((o) => o.id === browsingOrganizationId);
+    if (!org) return;
+    
+    try {
+      await window.electronAPI.updateOrganization(browsingOrganizationId, { status: 'active' });
+      setOrganizations((prev) => 
+        prev.map((o) => o.id === browsingOrganizationId ? { ...o, status: 'active' } : o)
+      );
+      window.electronAPI.showNotification('Organization Restored', `"${org.name}" has been restored`);
+    } catch (err) {
+      console.error('Failed to restore organization:', err);
+      alert('Failed to restore organization');
+    }
+  }, [browsingOrganizationId, organizations]);
+
   const handleDeleteOrganization = useCallback(() => {
     if (!browsingOrganizationId) {
       alert('Please select an organization first');
@@ -937,6 +1004,7 @@ export function TaskManager() {
       <NavPanel
         organizations={organizations}
         selectedOrgId={browsingOrganizationId}
+        selectedOrgStatus={organizations.find(o => o.id === browsingOrganizationId)?.status}
         onSelectOrg={(id) => {
           setBrowsingSelection(id, null, null);
           setTaskDetail(null);
@@ -947,6 +1015,8 @@ export function TaskManager() {
         }}
         onAddOrg={handleAddOrganization}
         onEditOrg={handleEditOrganization}
+        onArchiveOrg={handleArchiveOrganization}
+        onUnarchiveOrg={handleUnarchiveOrganization}
         onDeleteOrg={handleDeleteOrganization}
         projectStatusFilter={projectStatusFilter as ProjectStatus | null}
         taskStatusFilter={taskStatusFilter as TaskStatus | null}
@@ -972,8 +1042,12 @@ export function TaskManager() {
         onDeleteTask={handleDeleteTask}
         timerTask={timerTask}
         timerStatus={timerStatus}
+        effectiveTheme={theme}
         themeMode={themeMode}
         onThemeChange={setTheme}
+        autoPauseSettings={autoPauseSettings}
+        onAutoPauseToggle={toggleAutoPause}
+        onAutoPauseThresholdChange={(threshold) => updateAutoPauseSettings({ idleThreshold: threshold })}
         loading={loadingProjects}
       />
 
@@ -983,7 +1057,7 @@ export function TaskManager() {
         hasProject={Boolean(browsingProjectId)}
         selectedTaskId={browsingTaskId}
         project={projects.find((p) => p.id === browsingProjectId) || null}
-        projectTotalTime={projectTotalTime}
+        projectTotalTime={realTimeProjectTotal}
         timerTask={timerTask}
         timerStatus={timerStatus}
         timerDisplay={timerDisplay}

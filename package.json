@@ -1,9 +1,9 @@
 {
   "name": "trackerton-react",
-  "version": "1.0.0",
+  "version": "0.1.0",
   "main": "dist-electron/main/index.mjs",
   "description": "Trackerton - The time-tracking app (React Edition)",
-  "author": "",
+  "author": "HalcyonVagabond",
   "license": "ISC",
   "private": true,
   "debug": {
@@ -15,9 +15,54 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build && electron-builder",
+    "build:mac": "tsc && vite build && electron-builder --mac",
+    "build:win": "tsc && vite build && electron-builder --win",
+    "build:all": "tsc && vite build && electron-builder --mac --win",
+    "release": "tsc && vite build && electron-builder --mac --win --publish always",
     "preview": "vite preview",
     "pretest": "vite build --mode=test",
     "test": "vitest run"
+  },
+  "build": {
+    "appId": "com.trackerton.app",
+    "productName": "Trackerton",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist-electron",
+      "dist"
+    ],
+    "publish": {
+      "provider": "github",
+      "owner": "HalcyonVagabond",
+      "repo": "trackerton-desktop",
+      "releaseType": "draft"
+    },
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": ["arm64", "x64"]
+        }
+      ],
+      "category": "public.app-category.productivity",
+      "hardenedRuntime": true,
+      "icon": "build/icon.icns"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        }
+      ],
+      "icon": "build/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
   },
   "dependencies": {
     "canvas": "^3.2.0",

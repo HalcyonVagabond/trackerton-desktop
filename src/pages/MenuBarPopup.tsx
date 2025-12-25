@@ -233,7 +233,7 @@ export function MenuBarPopup() {
   return (
     <div className="menubar-popup">
       <div className="menubar-popup__header">
-        <img src="/logo-icon-light.png" alt="Trackerton" className="menubar-popup__logo" />
+        <img src={theme === 'dark' ? '/logo-icon-light.png' : '/logo-icon-dark.png'} alt="Trackerton" className="menubar-popup__logo" />
         <span className="menubar-popup__title">Trackerton</span>
         {isActive && (
           <div className={`menubar-popup__status ${isRunning ? 'menubar-popup__status--running' : 'menubar-popup__status--paused'}`}>

@@ -294,6 +294,10 @@
   color: var(--accent-danger);
 }
 
+.dropdown-menu__item--warning {
+  color: var(--accent-warning);
+}
+
 .dropdown-menu__label {
   padding: var(--space-xs) var(--space-md);
   font-size: var(--text-xs);
@@ -301,6 +305,24 @@
   text-transform: uppercase;
   letter-spacing: 0.5px;
   color: var(--text-muted);
+}
+
+.dropdown-menu__sublabel {
+  padding: var(--space-xs) var(--space-md);
+  padding-left: calc(var(--space-md) + 20px);
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.dropdown-menu__divider {
+  height: 1px;
+  background: var(--border-default);
+  margin: var(--space-xs) 0;
+}
+
+.dropdown-menu__item--indent {
+  padding-left: calc(var(--space-md) + 8px);
+  font-size: var(--text-xs);
 }
 
 .dropdown-menu__icon {
@@ -1474,4 +1496,92 @@
   color: var(--accent-danger);
   font-size: var(--text-sm);
   margin-bottom: var(--space-md);
+}
+
+/* ============================================
+   LOADING SCREEN
+   ============================================ */
+
+.loading-screen {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: 100vw;
+  height: 100vh;
+  background: var(--bg-panel);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  transition: opacity 0.4s ease, visibility 0.4s ease;
+}
+
+.loading-screen.hidden {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.loading-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+}
+
+.loading-logo {
+  width: 56px !important;
+  height: 56px !important;
+  max-width: 56px !important;
+  max-height: 56px !important;
+  object-fit: contain;
+  animation: alarmRattle 0.6s ease-in-out infinite;
+  filter: drop-shadow(0 2px 8px rgba(0, 0, 0, 0.1));
+}
+
+[data-theme="dark"] .loading-logo {
+  filter: drop-shadow(0 2px 8px rgba(0, 0, 0, 0.3));
+}
+
+.loading-text {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  letter-spacing: 0.01em;
+}
+
+@keyframes alarmRattle {
+  0%, 100% {
+    transform: rotate(0deg);
+  }
+  10% {
+    transform: rotate(-10deg);
+  }
+  20% {
+    transform: rotate(10deg);
+  }
+  30% {
+    transform: rotate(-10deg);
+  }
+  40% {
+    transform: rotate(10deg);
+  }
+  50% {
+    transform: rotate(-6deg);
+  }
+  60% {
+    transform: rotate(6deg);
+  }
+  70% {
+    transform: rotate(-3deg);
+  }
+  80% {
+    transform: rotate(3deg);
+  }
+  90% {
+    transform: rotate(0deg);
+  }
 }
