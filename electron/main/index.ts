@@ -4,29 +4,21 @@ import path from 'node:path'
 import os from 'node:os'
 import fs from 'node:fs'
 
-console.log('Main process starting...')
-
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
-console.log('__dirname:', __dirname)
 
 // Import database and IPC handlers (CommonJS modules)
 // @ts-ignore - CommonJS modules without type definitions
 import initializeDatabase from '../db/initDb.cjs'
-console.log('initializeDatabase imported')
 // @ts-ignore
 import registerOrganizationHandlers from '../ipcHandlers/organizationHandlers.cjs'
-console.log('registerOrganizationHandlers imported')
 // @ts-ignore
 import registerProjectHandlers from '../ipcHandlers/projectHandlers.cjs'
-console.log('registerProjectHandlers imported')
 // @ts-ignore
 import registerTaskHandlers from '../ipcHandlers/taskHandlers.cjs'
-console.log('registerTaskHandlers imported')
 // @ts-ignore
 import registerTimeEntryHandlers from '../ipcHandlers/timeEntryHandlers.cjs'
 // @ts-ignore
 import TimeEntryController from '../controllers/timeEntryController.cjs'
-console.log('All imports complete')
 
 // Custom property for tracking app quit state
 let isQuitting = false
@@ -96,7 +88,7 @@ let timerState: {
 } = {
   status: 'idle',
   elapsedTime: 0,
-  display: '00:00:00',
+  display: '0:00',
   task: null,
   updatedAt: Date.now(),
   source: 'main',
@@ -128,7 +120,7 @@ function loadTimerState() {
       return {
         status: parsed.status === 'running' ? 'paused' : (parsed.status || 'idle'),
         elapsedTime,
-        display: parsed.display || '00:00:00',
+        display: parsed.display || '0:00',
         task: parsed.task || null,
         updatedAt: Date.now(),
         source: 'main',
@@ -164,7 +156,11 @@ function formatDuration(seconds: number): string {
   const h = Math.floor(seconds / 3600)
   const m = Math.floor((seconds % 3600) / 60)
   const s = seconds % 60
-  return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`
+  // Only show hours if > 0, no leading zeros on first segment
+  if (h > 0) {
+    return `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`
+  }
+  return `${m}:${s.toString().padStart(2, '0')}`
 }
 
 function startMainProcessTimer() {
@@ -326,10 +322,10 @@ ipcMain.on('timer-command', (_event, command) => {
 function createMenuBarWindow() {
   menuBarWindow = new BrowserWindow({
     width: 340,
-    height: 480,
+    height: 400, // Start smaller, will resize to fit content
     show: false,
     frame: false,
-    resizable: false,
+    resizable: true, // Allow programmatic resize
     transparent: true,
     skipTaskbar: true,
     alwaysOnTop: true,
@@ -373,8 +369,8 @@ function createMainWindow() {
 
   if (VITE_DEV_SERVER_URL) {
     mainWindow.loadURL(VITE_DEV_SERVER_URL)
-    // Open devTool if the app is not packaged
-    mainWindow.webContents.openDevTools()
+    // Open devTool if the app is not packaged (commented out - use Cmd+Option+I to open manually)
+    // mainWindow.webContents.openDevTools()
     // Surface the main window automatically in development
     mainWindow.once('ready-to-show', () => {
       mainWindow!.show()
@@ -457,8 +453,6 @@ function createTray() {
     ])
     tray!.popUpContextMenu(contextMenu)
   })
-  
-  console.log('✓ Tray icon added to the menu bar')
 }
 
 function toggleMenuBarWindow() {
@@ -490,8 +484,6 @@ function showMenuBarWindow() {
   menuBarWindow!.setPosition(x, y, false)
   menuBarWindow!.show()
   menuBarWindow!.focus()
-  
-  console.log('Menu bar popup shown at position:', { x, y })
 }
 
 function showMainWindow() {
@@ -500,22 +492,15 @@ function showMainWindow() {
   }
   mainWindow!.show()
   mainWindow!.focus()
-  console.log('Main window shown')
 }
 
 app.whenReady().then(async () => {
-  console.log('app.whenReady() called')
-  
   try {
     // Load persisted selection state now that app is ready
-    console.log('Loading selection state...')
     selectionState = loadSelectionState()
-    console.log('Selection state loaded:', selectionState)
     
     // Load persisted timer state (if any)
-    console.log('Loading timer state...')
     const savedTimerState = loadTimerState()
-    console.log('Timer state loaded:', savedTimerState)
     if (savedTimerState) {
       timerState = savedTimerState
       // If timer had a task, make sure selection state matches
@@ -532,15 +517,12 @@ app.whenReady().then(async () => {
       }
     }
     
-    console.log('Initializing database...')
     await initializeDatabase()
-    console.log('Database initialized')
     
     registerOrganizationHandlers()
     registerProjectHandlers()
     registerTaskHandlers()
     registerTimeEntryHandlers()
-    console.log('Handlers registered')
   } catch (error) {
     console.error('Error during startup:', error)
   }
@@ -548,6 +530,13 @@ app.whenReady().then(async () => {
   // Handle opening main window from menu bar popup
   ipcMain.on('open-main-window', () => {
     showMainWindow()
+  })
+
+  // Handle resizing menu bar window
+  ipcMain.on('resize-menubar-window', (_event, { width, height }: { width: number; height: number }) => {
+    if (menuBarWindow && !menuBarWindow.isDestroyed()) {
+      menuBarWindow.setSize(width, height)
+    }
   })
 
   // Set dock icon for macOS
@@ -607,7 +596,6 @@ app.on('before-quit', async () => {
           new Date().toISOString()
         )
         timerState.lastSavedElapsed = timerState.elapsedTime
-        console.log(`Saved ${unsavedDuration} seconds on quit for task ${timerState.task.id}`)
       } catch (error) {
         console.error('Failed to save time entry on quit:', error)
       }

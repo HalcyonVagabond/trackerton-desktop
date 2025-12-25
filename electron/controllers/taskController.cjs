@@ -1,8 +1,8 @@
 const Task = require('../models/task');
 
 class TaskController {
-  static async createTask(name, project_id, status = 'todo') {
-    return await Task.create({ name, project_id, status });
+  static async createTask(name, project_id, description = null, status = 'todo') {
+    return await Task.create({ name, project_id, description, status });
   }
 
   static async getTasks(project_id, statusFilter = null) {

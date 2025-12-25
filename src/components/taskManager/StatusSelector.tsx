@@ -23,6 +23,16 @@ const STATUS_LABELS: Record<string, string> = {
   archived: 'Archived',
 };
 
+const STATUS_COLORS: Record<string, { bg: string; border: string; text: string }> = {
+  active: { bg: 'rgba(34, 197, 94, 0.1)', border: '#22c55e', text: '#16a34a' },
+  inactive: { bg: 'rgba(156, 163, 175, 0.1)', border: '#9ca3af', text: '#6b7280' },
+  todo: { bg: 'rgba(156, 163, 175, 0.1)', border: '#9ca3af', text: '#6b7280' },
+  in_progress: { bg: 'rgba(59, 130, 246, 0.1)', border: '#3b82f6', text: '#2563eb' },
+  on_hold: { bg: 'rgba(251, 191, 36, 0.1)', border: '#fbbf24', text: '#d97706' },
+  completed: { bg: 'rgba(34, 197, 94, 0.1)', border: '#22c55e', text: '#16a34a' },
+  archived: { bg: 'rgba(107, 114, 128, 0.1)', border: '#6b7280', text: '#4b5563' },
+};
+
 export function StatusSelector({ type, value, onChange, disabled }: StatusSelectorProps) {
   const statuses = type === 'organization' 
     ? ORGANIZATION_STATUSES 
@@ -32,28 +42,50 @@ export function StatusSelector({ type, value, onChange, disabled }: StatusSelect
   
   const defaultValue = type === 'organization' ? 'active' : type === 'project' ? 'in_progress' : 'todo';
   const currentValue = value ?? defaultValue;
+  const colors = STATUS_COLORS[currentValue] || STATUS_COLORS.todo;
 
   return (
-    <select
-      className="status-selector"
-      value={currentValue}
-      onChange={(e) => onChange(e.target.value as Status)}
-      disabled={disabled}
-      style={{
-        padding: '4px 8px',
-        borderRadius: '4px',
-        border: '1px solid var(--border-color)',
-        backgroundColor: 'var(--bg-primary)',
-        color: 'var(--text-primary)',
-        fontSize: '12px',
-        cursor: disabled ? 'not-allowed' : 'pointer',
-      }}
-    >
-      {statuses.map((status) => (
-        <option key={status} value={status}>
-          {STATUS_LABELS[status] ?? status}
-        </option>
-      ))}
-    </select>
+    <div className="status-selector-wrapper" style={{ position: 'relative', display: 'inline-flex' }}>
+      <select
+        className="status-selector"
+        value={currentValue}
+        onChange={(e) => onChange(e.target.value as Status)}
+        disabled={disabled}
+        style={{
+          padding: '6px 28px 6px 10px',
+          borderRadius: '6px',
+          border: `1.5px solid ${colors.border}`,
+          backgroundColor: colors.bg,
+          color: colors.text,
+          fontSize: '12px',
+          fontWeight: 500,
+          cursor: disabled ? 'not-allowed' : 'pointer',
+          appearance: 'none',
+          WebkitAppearance: 'none',
+          MozAppearance: 'none',
+          outline: 'none',
+          transition: 'all 0.2s ease',
+        }}
+      >
+        {statuses.map((status) => (
+          <option key={status} value={status}>
+            {STATUS_LABELS[status] ?? status}
+          </option>
+        ))}
+      </select>
+      <span
+        style={{
+          position: 'absolute',
+          right: '8px',
+          top: '50%',
+          transform: 'translateY(-50%)',
+          pointerEvents: 'none',
+          color: colors.text,
+          fontSize: '10px',
+        }}
+      >
+        ▼
+      </span>
+    </div>
   );
 }

@@ -1,16 +1,16 @@
 const TimeEntry = require('../models/timeEntry');
 
 class TimeEntryController {
-  static async createTimeEntry(task_id, duration, timestamp) {
-    return await TimeEntry.create({ task_id, duration, timestamp });
+  static async createTimeEntry(task_id, duration, timestamp, notes = null) {
+    return await TimeEntry.create({ task_id, duration, timestamp, notes });
   }
 
   static async getTimeEntries(filter) {
     return await TimeEntry.findAll(filter);
   }
 
-  static async updateTimeEntry(id, duration, timestamp) {
-    return await TimeEntry.update(id, { duration, timestamp });
+  static async updateTimeEntry(id, data) {
+    return await TimeEntry.update(id, data);
   }
 
   static async deleteTimeEntry(id) {

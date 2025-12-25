@@ -24,6 +24,7 @@ export interface Project {
 export interface Task {
   id: number
   name: string
+  description?: string | null
   status?: TaskStatus
   project_id: number
   organization_id?: number
@@ -35,6 +36,7 @@ export interface TimeEntry {
   task_id: number
   duration: number
   timestamp: string
+  notes?: string | null
   created_at?: string
 }
 
@@ -70,14 +72,14 @@ export interface ElectronAPI {
 
   // Tasks
   getTasks: (projectId: number, statusFilter?: TaskStatus) => Promise<Task[]>
-  addTask: (name: string, projectId: number, status?: TaskStatus) => Promise<Task>
-  updateTask: (id: number, data: { name?: string; status?: TaskStatus }) => Promise<void>
+  addTask: (name: string, projectId: number, description?: string, status?: TaskStatus) => Promise<Task>
+  updateTask: (id: number, data: { name?: string; description?: string; status?: TaskStatus }) => Promise<void>
   deleteTask: (id: number) => Promise<void>
 
   // Time Entries
   saveTimeEntry: (data: Partial<TimeEntry>) => void
   getTimeEntries: (filter: any) => Promise<TimeEntry[]>
-  updateTimeEntry: (id: number, duration: number, timestamp: string) => Promise<void>
+  updateTimeEntry: (id: number, data: { duration?: number; timestamp?: string; notes?: string }) => Promise<void>
   deleteTimeEntry: (id: number) => Promise<void>
   getLatestTimeEntry: (taskId: number) => Promise<TimeEntry | null>
   getTotalDurationByTask: (taskId: number) => Promise<number>

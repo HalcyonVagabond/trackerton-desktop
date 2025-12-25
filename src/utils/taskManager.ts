@@ -13,9 +13,12 @@ export const secondsToHms = (totalSeconds: number) => {
 };
 
 export const formatDuration = (seconds?: number | null) => {
-  if (!seconds) return '0:00:00';
+  if (!seconds) return '0:00';
   const { hours, minutes, secs } = secondsToHms(seconds);
-  return `${hours}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+  if (hours > 0) {
+    return `${hours}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+  }
+  return `${minutes}:${String(secs).padStart(2, '0')}`;
 };
 
 export const formatDateTime = (timestamp?: string | null) => {

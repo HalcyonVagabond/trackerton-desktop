@@ -5,7 +5,7 @@ import { formatDuration } from '../utils/timeUtils'
 export function useTimer() {
   const [status, setStatus] = useState<'idle' | 'running' | 'paused'>('idle')
   const [elapsedTime, setElapsedTime] = useState(0)
-  const [display, setDisplay] = useState('00:00:00')
+  const [display, setDisplay] = useState('0:00')
   const [task, setTask] = useState<Task | null>(null)
 
   const previousElapsedRef = useRef(0)
@@ -51,13 +51,13 @@ export function useTimer() {
       previousElapsedRef.current = 0
       setTask(null)
       setElapsedTime(0)
-      setDisplay('00:00:00')
+      setDisplay('0:00')
       setStatus('idle')
       lastStatusRef.current = 'idle'
       window.electronAPI.updateTimerState({
         status: 'idle',
         elapsedTime: 0,
-        display: '00:00:00',
+        display: '0:00',
         task: null,
         updatedAt: Date.now(),
       })

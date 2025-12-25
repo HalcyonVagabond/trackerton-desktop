@@ -7,6 +7,7 @@ function initTaskTable() {
       CREATE TABLE IF NOT EXISTS tasks (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT,
+        description TEXT,
         status TEXT DEFAULT 'todo',
         project_id INTEGER,
         created_at TEXT,
@@ -17,11 +18,18 @@ function initTaskTable() {
       if (err) {
         reject(err);
       } else {
-        // Add status column if it doesn't exist (migration)
-        db.run(`ALTER TABLE tasks ADD COLUMN status TEXT DEFAULT 'todo'`, (alterErr) => {
-          // Ignore error if column already exists
-          resolve();
-        });
+        // Run migrations for existing databases
+        const migrations = [
+          // Add status column if it doesn't exist
+          new Promise((res) => {
+            db.run(`ALTER TABLE tasks ADD COLUMN status TEXT DEFAULT 'todo'`, () => res());
+          }),
+          // Add description column if it doesn't exist
+          new Promise((res) => {
+            db.run(`ALTER TABLE tasks ADD COLUMN description TEXT`, () => res());
+          }),
+        ];
+        Promise.all(migrations).then(() => resolve());
       }
     });
   });

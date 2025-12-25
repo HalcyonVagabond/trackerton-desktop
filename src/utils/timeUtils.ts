@@ -5,9 +5,12 @@ export function formatDuration(seconds: number): string {
   const minutes = Math.floor((seconds % 3600) / 60)
   const secs = seconds % 60
 
-  return [hours, minutes, secs]
-    .map(v => v < 10 ? '0' + v : v)
-    .join(':')
+  // Only show hours if > 0, no leading zeros on the first segment
+  if (hours > 0) {
+    return `${hours}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
+  }
+  // Only show minutes:seconds, no leading zero on minutes
+  return `${minutes}:${secs.toString().padStart(2, '0')}`
 }
 
 export function parseDuration(display: string): number {

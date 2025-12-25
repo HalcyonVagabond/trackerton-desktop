@@ -39,7 +39,7 @@ const TimerContext = createContext<TimerContextValue | undefined>(undefined);
 export function TimerProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<TimerStatus>('idle');
   const [elapsedTime, setElapsedTime] = useState(0);
-  const [display, setDisplay] = useState('00:00:00');
+  const [display, setDisplay] = useState('0:00');
   const [task, setTask] = useState<Task | null>(null);
 
   // Track the elapsed time that has been saved to the database
@@ -91,13 +91,13 @@ export function TimerProvider({ children }: { children: ReactNode }) {
       setTask(null);
       setElapsedTime(0);
       elapsedTimeRef.current = 0;
-      setDisplay('00:00:00');
+      setDisplay('0:00');
       setStatus('idle');
       lastStatusRef.current = 'idle';
       window.electronAPI.updateTimerState({
         status: 'idle',
         elapsedTime: 0,
-        display: '00:00:00',
+        display: '0:00',
         task: null,
         updatedAt: Date.now(),
       });
@@ -230,14 +230,14 @@ export function TimerProvider({ children }: { children: ReactNode }) {
     setTask(null);
     setElapsedTime(0);
     elapsedTimeRef.current = 0;
-    setDisplay('00:00:00');
+    setDisplay('0:00');
     setStatus('idle');
     lastStatusRef.current = 'idle';
 
     window.electronAPI.updateTimerState({
       status: 'idle',
       elapsedTime: 0,
-      display: '00:00:00',
+      display: '0:00',
       task: null,
       updatedAt: Date.now(),
     });
@@ -285,7 +285,6 @@ export function TimerProvider({ children }: { children: ReactNode }) {
           previousElapsedRef.current = currentElapsed;
           // Notify main process of the save so it can track for quit-time saving
           window.electronAPI.updateTimerSavedElapsed(currentElapsed);
-          console.log(`Auto-saved ${diff} seconds for task ${taskId}`);
         } catch (error) {
           console.error('Auto-save failed:', error);
         }

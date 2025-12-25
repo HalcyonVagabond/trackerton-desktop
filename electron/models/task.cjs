@@ -3,15 +3,15 @@ const db = require('../db/database');
 
 // Status types: 'todo' | 'in_progress' | 'on_hold' | 'completed' | 'archived'
 class Task {
-  static create({ name, project_id, status = 'todo' }) {
+  static create({ name, project_id, description = null, status = 'todo' }) {
     const timestamp = new Date().toISOString();
     return new Promise((resolve, reject) => {
       db.run(
-        `INSERT INTO tasks (name, project_id, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`,
-        [name, project_id, status, timestamp, timestamp],
+        `INSERT INTO tasks (name, description, project_id, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)`,
+        [name, description, project_id, status, timestamp, timestamp],
         function (err) {
           if (err) reject(err);
-          else resolve({ id: this.lastID, name, project_id, status, created_at: timestamp, updated_at: timestamp });
+          else resolve({ id: this.lastID, name, description, project_id, status, created_at: timestamp, updated_at: timestamp });
         }
       );
     });
@@ -55,6 +55,10 @@ class Task {
       if (data.name !== undefined) {
         fields.push('name = ?');
         values.push(data.name);
+      }
+      if (data.description !== undefined) {
+        fields.push('description = ?');
+        values.push(data.description);
       }
       if (data.status !== undefined) {
         fields.push('status = ?');

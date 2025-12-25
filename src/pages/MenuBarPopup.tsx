@@ -40,6 +40,26 @@ export function MenuBarPopup() {
   const isRunning = status === 'running';
   const isPaused = status === 'paused';
   const isActive = isRunning || isPaused;
+  
+  // Dynamically resize window to fit content
+  useEffect(() => {
+    const resizeToContent = () => {
+      const popup = document.querySelector('.menubar-popup');
+      if (popup) {
+        const rect = popup.getBoundingClientRect();
+        const height = Math.ceil(rect.height) + 16; // Add small padding
+        window.electronAPI?.resizeMenuBarWindow?.(340, Math.min(Math.max(height, 300), 650));
+      }
+    };
+    
+    // Resize after DOM updates
+    requestAnimationFrame(() => {
+      requestAnimationFrame(resizeToContent);
+    });
+  }, [isActive, selectedTaskId, selectedProjectId, selectedOrganizationId]);
+  
+  // Show timer's task in dropdown when active, otherwise show selected task
+  const effectiveTaskId = isActive && timerTask ? timerTask.id : selectedTaskId;
 
 
   const enrichTaskWithContext = useCallback(
@@ -144,6 +164,13 @@ export function MenuBarPopup() {
   };
 
   const handleStart = () => {
+    // When paused, resume the timer task
+    if (isPaused && timerTask) {
+      start(timerTask);
+      return;
+    }
+    
+    // Otherwise start the selected task
     if (!selectedTaskId) return;
     const selectedTask = enrichTaskWithContext(tasks.find(t => t.id === selectedTaskId) ?? null);
     if (selectedTask) {
@@ -167,12 +194,25 @@ export function MenuBarPopup() {
     });
   };
 
-  const handleTaskChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+  const handleTaskChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
     const taskId = e.target.value ? Number(e.target.value) : null;
-    if (taskId === selectedTaskId) return;
-    void finalizeCurrentTask().then(() => {
-      setTask(taskId);
-    });
+    const currentTaskId = effectiveTaskId;
+    if (taskId === currentTaskId) return;
+    
+    // Stop current timer if running
+    if (isActive) {
+      await stop();
+    }
+    
+    setTask(taskId);
+    
+    // Auto-start the new task if we were running
+    if (isRunning && taskId) {
+      const newTask = enrichTaskWithContext(tasks.find(t => t.id === taskId) ?? null);
+      if (newTask) {
+        start(newTask);
+      }
+    }
   };
 
   const handleOpenMainWindow = () => {
@@ -187,7 +227,8 @@ export function MenuBarPopup() {
     return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
   };
 
-  const canStart = selectedTaskId !== null && !isRunning;
+  // Can start/resume if: paused with a timer task, OR have a selected task and not running
+  const canStart = (isPaused && timerTask) || (selectedTaskId !== null && !isRunning);
 
   return (
     <div className="menubar-popup">
@@ -249,11 +290,15 @@ export function MenuBarPopup() {
             <label className="menubar-popup__label">Task</label>
             <select
               className="menubar-popup__select"
-              value={selectedTaskId ?? ''}
+              value={effectiveTaskId ?? ''}
               onChange={handleTaskChange}
               disabled={!selectedProjectId || tasksLoading}
             >
               <option value="">Select task...</option>
+              {/* Include timer task if it's not in the current project's task list */}
+              {isActive && timerTask && !tasks.some(t => t.id === timerTask.id) && (
+                <option key={timerTask.id} value={timerTask.id}>{timerTask.name}</option>
+              )}
               {tasks.map((task) => (
                 <option key={task.id} value={task.id}>{task.name}</option>
               ))}
