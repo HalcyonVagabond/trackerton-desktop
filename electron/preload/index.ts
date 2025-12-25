@@ -105,6 +105,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.removeListener(ipcChannels.SELECTION_STATE, listener)
     }
   },
+
+  // System idle time for auto-pause feature
+  getSystemIdleTime: () => ipcRenderer.invoke('get-system-idle-time'),
+
+  // System notifications
+  showNotification: (title: string, body: string) => ipcRenderer.send('show-notification', { title, body }),
 })
 
 

@@ -58,46 +58,64 @@ body {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 24px;
+  gap: 20px;
 }
 
 .loading-logo {
-  width: 100px;
-  height: 100px;
-  animation: wiggleGrow 1.5s ease-in-out infinite;
-  filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.1));
+  width: 64px;
+  height: 64px;
+  max-width: 64px;
+  max-height: 64px;
+  object-fit: contain;
+  animation: alarmRattle 0.5s ease-in-out infinite;
+  animation-play-state: running;
+  filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.15));
 }
 
 [data-theme="dark"] .loading-logo {
-  filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.4)) brightness(1.1);
+  filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.4));
 }
 
 .loading-text {
-  font-size: 16px;
+  font-size: 14px;
   font-weight: 500;
   color: var(--text-muted);
   letter-spacing: 0.02em;
 }
 
-@keyframes wiggleGrow {
-  0% {
-    transform: rotate(0deg) scale(1);
+/* Alarm clock rattle animation */
+@keyframes alarmRattle {
+  0%, 100% {
+    transform: rotate(0deg);
   }
-  15% {
-    transform: rotate(-12deg) scale(1.08);
+  10% {
+    transform: rotate(-8deg);
+  }
+  20% {
+    transform: rotate(8deg);
   }
   30% {
-    transform: rotate(0deg) scale(1);
+    transform: rotate(-8deg);
   }
-  45% {
-    transform: rotate(12deg) scale(1.08);
+  40% {
+    transform: rotate(8deg);
+  }
+  50% {
+    transform: rotate(-4deg);
   }
   60% {
-    transform: rotate(0deg) scale(1);
+    transform: rotate(4deg);
   }
-  100% {
-    transform: rotate(0deg) scale(1);
+  70% {
+    transform: rotate(-2deg);
   }
+  80% {
+    transform: rotate(2deg);
+  }
+  90% {
+    transform: rotate(0deg);
+  }
+}
 }
 
 /* Header */
