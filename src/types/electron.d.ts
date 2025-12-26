@@ -91,6 +91,7 @@ export interface ElectronAPI {
 
   // Window Management
   openMainWindow: () => void
+  resizeMenuBarWindow: (width: number, height: number) => void
 
   // Timer state sharing between windows
   updateTimerState: (state: Partial<TimerState>) => void

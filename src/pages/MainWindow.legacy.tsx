@@ -22,7 +22,7 @@ export function MainWindow() {
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const lastTaskContext = useRef<{ taskId: number | null; duration: number }>({ taskId: null, duration: 0 });
 
-  const { theme, toggleTheme } = useTheme();
+  const { theme, setTheme } = useTheme();
   const {
     selectedOrganizationId,
     selectedProjectId,
@@ -551,7 +551,7 @@ export function MainWindow() {
                 <button 
                   className={`theme-btn theme-btn--light ${theme === 'light' ? 'active' : ''}`}
                   onClick={() => {
-                    if (theme !== 'light') toggleTheme();
+                    if (theme !== 'light') setTheme('light');
                   }}
                 >
                   ☀️ Light
@@ -559,7 +559,7 @@ export function MainWindow() {
                 <button 
                   className={`theme-btn theme-btn--dark ${theme === 'dark' ? 'active' : ''}`}
                   onClick={() => {
-                    if (theme !== 'dark') toggleTheme();
+                    if (theme !== 'dark') setTheme('dark');
                   }}
                 >
                   🌙 Dark
