@@ -1,9 +1,9 @@
 {
   "name": "trackerton-react",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "main": "dist-electron/main/index.mjs",
   "description": "Trackerton - The time-tracking app (React Edition)",
-  "author": "HalcyonVagabond",
+  "author": "We Build Good Things LLC",
   "license": "ISC",
   "private": true,
   "debug": {
