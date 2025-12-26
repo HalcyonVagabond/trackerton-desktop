@@ -48,8 +48,7 @@ interface DetailPanelProps {
   // Timer state
   timerTask: Task | null;
   timerStatus: 'idle' | 'running' | 'paused';
-  timerDisplay: string;
-  getRealTimeTotal: (taskId: number, savedDuration: number) => number;
+  getUnsavedTime: () => number; // Unsaved time since last auto-save (for Recording entry & total)
   
   // Handlers
   onTaskNameChange: (name: string) => void;
@@ -78,8 +77,7 @@ export function DetailPanel({
   loadingTask,
   timerTask,
   timerStatus,
-  timerDisplay,
-  getRealTimeTotal,
+  getUnsavedTime,
   onTaskNameChange,
   onTaskDescriptionChange,
   onTaskStatusChange,
@@ -131,10 +129,10 @@ export function DetailPanel({
   const isTimerRunning = isTimerTask && timerStatus === 'running';
   const isTimerPaused = isTimerTask && timerStatus === 'paused';
   
-  // Real-time total
-  const taskTotalTime = taskDetail 
-    ? getRealTimeTotal(taskDetail.id, taskDetail.totalDuration) 
-    : 0;
+  // Real-time total: DB saved duration + unsaved time (if this is the timer task)
+  const taskTotalTime = isTimerTask 
+    ? (taskDetail?.totalDuration || 0) + getUnsavedTime()
+    : (taskDetail?.totalDuration || 0);
     
   // Entry count includes running timer as virtual entry
   const entryCount = (taskDetail?.timeEntries.length || 0) + (isTimerRunning ? 1 : 0);
@@ -238,10 +236,10 @@ export function DetailPanel({
               <div className="detail-timer-section">
                 <div className="detail-timer">
                   <div className="detail-timer__display">
-                    {isTimerTask ? timerDisplay : formatDuration(taskTotalTime)}
+                    {formatDuration(taskTotalTime)}
                   </div>
                   <div className="detail-timer__label">
-                    {isTimerRunning ? 'Running' : isTimerPaused ? 'Paused' : 'Total Time'}
+                    {isTimerRunning ? 'RUNNING' : isTimerPaused ? 'PAUSED' : 'Total Time'}
                   </div>
                 </div>
                 {primaryAction && (
@@ -294,7 +292,7 @@ export function DetailPanel({
                   {isTimerRunning && (
                     <div className="detail-entry detail-entry--active">
                       <div className="detail-entry__row">
-                        <span className="detail-entry__time">{timerDisplay}</span>
+                        <span className="detail-entry__time">{formatDuration(getUnsavedTime())}</span>
                         <span className="detail-entry__badge">Recording</span>
                       </div>
                     </div>

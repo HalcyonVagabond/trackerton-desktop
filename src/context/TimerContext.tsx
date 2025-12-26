@@ -11,13 +11,17 @@ interface TimerContextValue {
   display: string;
   task: Task | null;
   setTaskContext: (task: Task | null, initialElapsed?: number) => void;
-  start: (task?: Task) => void;
+  start: (task?: Task, forceReset?: boolean) => void;
   pause: () => void;
   stop: () => Promise<boolean>;
   /** Reset timer completely - clears task and elapsed time */
   reset: () => void;
-  /** Get the real-time total for a task (saved + current elapsed if timer is for this task) */
-  getRealTimeTotal: (taskId: number, savedDuration: number) => number;
+  /** 
+   * Get the unsaved elapsed time (time since last auto-save).
+   * For total task time display: use taskDurations[taskId] + getUnsavedTime()
+   * This approach avoids double-counting since DB total already includes auto-saved time.
+   */
+  getUnsavedTime: () => number;
 }
 
 const TimerContext = createContext<TimerContextValue | undefined>(undefined);
@@ -54,7 +58,7 @@ export function TimerProvider({ children }: { children: ReactNode }) {
   // Subscribe to timer state updates from main process
   // The main process handles all timing to avoid Chromium throttling
   useEffect(() => {
-    const handleTimerState = (state: TimerState) => {
+    const handleTimerState = async (state: TimerState) => {
       setStatus(state.status);
       setElapsedTime(state.elapsedTime);
       elapsedTimeRef.current = state.elapsedTime;
@@ -132,11 +136,29 @@ export function TimerProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const start = useCallback(
-    (selectedTask?: Task) => {
+    (selectedTask?: Task, forceReset = false) => {
       const taskToUse = selectedTask || task;
       if (!taskToUse) {
         console.warn('Cannot start timer without a task');
         return;
+      }
+
+      // forceReset = true means always start fresh (used when switching tasks)
+      // Otherwise, only resume if same task and currently paused
+      const isSameTask = task && selectedTask && task.id === selectedTask.id;
+      const isResumingPaused = isSameTask && status === 'paused' && !forceReset;
+      
+      // Only keep elapsed time if resuming the same paused task
+      const shouldResetTime = !isResumingPaused;
+      
+      const newElapsedTime = shouldResetTime ? 0 : elapsedTime;
+      const newDisplay = shouldResetTime ? '0:00' : display;
+      
+      if (shouldResetTime) {
+        setElapsedTime(0);
+        elapsedTimeRef.current = 0;
+        previousElapsedRef.current = 0;
+        setDisplay('0:00');
       }
 
       setStatus('running');
@@ -146,12 +168,16 @@ export function TimerProvider({ children }: { children: ReactNode }) {
       window.electronAPI.updateTimerState({
         status: 'running',
         task: taskToUse,
-        elapsedTime,
-        display,
+        elapsedTime: newElapsedTime,
+        display: newDisplay,
         updatedAt: Date.now(),
       });
+      
+      if (shouldResetTime) {
+        window.electronAPI.updateTimerSavedElapsed(0);
+      }
     },
-    [task, elapsedTime, display],
+    [task, elapsedTime, display, status],
   );
 
   const pause = useCallback(() => {
@@ -297,20 +323,14 @@ export function TimerProvider({ children }: { children: ReactNode }) {
   }, [status, task]);
 
   /**
-   * Get real-time total duration for a task.
-   * If the timer is running/paused for this task, adds the unsaved elapsed time.
+   * Get the unsaved elapsed time (time since last auto-save).
+   * For displaying total task time, use: taskDurations[taskId] + getUnsavedTime()
+   * This avoids double-counting since DB total already includes auto-saved time.
    */
-  const getRealTimeTotal = useCallback(
-    (taskId: number, savedDuration: number): number => {
-      if (!task || task.id !== taskId || status === 'idle') {
-        return savedDuration;
-      }
-      // Add the difference between current elapsed and previously saved
-      const unsavedTime = elapsedTime - previousElapsedRef.current;
-      return savedDuration + Math.max(0, unsavedTime);
-    },
-    [task, status, elapsedTime],
-  );
+  const getUnsavedTime = useCallback((): number => {
+    if (status === 'idle') return 0;
+    return Math.max(0, elapsedTime - previousElapsedRef.current);
+  }, [status, elapsedTime]);
 
   const value = useMemo<TimerContextValue>(
     () => ({
@@ -323,9 +343,9 @@ export function TimerProvider({ children }: { children: ReactNode }) {
       pause,
       stop,
       reset,
-      getRealTimeTotal,
+      getUnsavedTime,
     }),
-    [status, elapsedTime, display, task, setTaskContext, start, pause, stop, reset, getRealTimeTotal],
+    [status, elapsedTime, display, task, setTaskContext, start, pause, stop, reset, getUnsavedTime],
   );
 
   return <TimerContext.Provider value={value}>{children}</TimerContext.Provider>;

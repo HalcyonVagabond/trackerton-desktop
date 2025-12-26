@@ -19,6 +19,8 @@ import registerTaskHandlers from '../ipcHandlers/taskHandlers.cjs'
 import registerTimeEntryHandlers from '../ipcHandlers/timeEntryHandlers.cjs'
 // @ts-ignore
 import TimeEntryController from '../controllers/timeEntryController.cjs'
+// @ts-ignore
+import TaskController from '../controllers/taskController.cjs'
 
 // Custom property for tracking app quit state
 let isQuitting = false
@@ -237,6 +239,8 @@ ipcMain.handle('timer-state-get', () => timerState)
 ipcMain.on('timer-saved-elapsed-update', (_event, savedElapsed: number) => {
   timerState.lastSavedElapsed = savedElapsed
   saveTimerState()
+  // Broadcast the updated state so all windows sync their previousElapsedRef
+  broadcastTimerState()
 })
 
 // Theme management
@@ -534,6 +538,42 @@ app.whenReady().then(async () => {
     }
     
     await initializeDatabase()
+    
+    // Validate that the timer's task still exists in the database
+    // This handles the case where user deleted the task/org in a previous session
+    if (timerState.task && timerState.task.id) {
+      try {
+        const existingTask = await TaskController.getTaskById(timerState.task.id)
+        if (!existingTask) {
+          console.log('Timer task no longer exists, resetting timer state')
+          timerState = {
+            status: 'idle',
+            elapsedTime: 0,
+            display: '0:00',
+            task: null,
+            updatedAt: Date.now(),
+            source: 'main',
+            startTimeRef: 0,
+            lastSavedElapsed: 0,
+          }
+          saveTimerState()
+        }
+      } catch (error) {
+        console.error('Error validating timer task:', error)
+        // On error, reset timer to be safe
+        timerState = {
+          status: 'idle',
+          elapsedTime: 0,
+          display: '0:00',
+          task: null,
+          updatedAt: Date.now(),
+          source: 'main',
+          startTimeRef: 0,
+          lastSavedElapsed: 0,
+        }
+        saveTimerState()
+      }
+    }
     
     registerOrganizationHandlers()
     registerProjectHandlers()

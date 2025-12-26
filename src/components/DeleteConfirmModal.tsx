@@ -72,13 +72,16 @@ export function DeleteConfirmModal({
             Cancel
           </button>
           <button
-            className="btn btn--delete"
+            className="btn"
             onClick={handleConfirm}
             disabled={isLoading}
             style={{
               background: 'linear-gradient(140deg, var(--button-red) 0%, var(--button-red-hover) 100%)',
               color: '#fdfbf7',
-              borderColor: 'var(--button-red-hover)',
+              border: '1px solid var(--button-red-hover)',
+              borderRadius: '8px',
+              padding: '10px 20px',
+              minWidth: '90px',
             }}
           >
             {isLoading ? 'Deleting...' : 'Delete'}

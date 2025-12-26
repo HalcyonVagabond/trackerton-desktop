@@ -46,11 +46,12 @@ interface ContentPanelProps {
   // Project data
   project: ProjectWithTasks | null;
   projectTotalTime: number;
+  taskDurations: Record<number, number>; // Map of taskId -> total duration in seconds (from DB)
   
   // Timer state
   timerTask: Task | null;
   timerStatus: 'idle' | 'running' | 'paused';
-  timerDisplay: string;
+  getUnsavedTime: () => number; // Get unsaved timer time (since last auto-save)
   
   // Handlers
   onProjectNameChange: (name: string) => void;
@@ -95,9 +96,10 @@ export function ContentPanel({
   selectedTaskId,
   project,
   projectTotalTime,
+  taskDurations,
   timerTask,
   timerStatus,
-  timerDisplay,
+  getUnsavedTime,
   onProjectNameChange,
   onProjectDescriptionChange,
   onProjectStatusChange,
@@ -110,6 +112,11 @@ export function ContentPanel({
   actionDisabled,
 }: ContentPanelProps) {
   const [openMenuId, setOpenMenuId] = useState<number | null>(null);
+  
+  // Calculate timer task's total time: DB saved duration + unsaved time
+  const timerTaskTotalTime = timerTask 
+    ? (taskDurations[timerTask.id] || 0) + getUnsavedTime()
+    : 0;
   
   // Empty states
   if (!hasOrganization) {
@@ -159,7 +166,7 @@ export function ContentPanel({
             </div>
           </div>
           <div className="timer-banner__controls">
-            <span className="timer-banner__time">{timerDisplay}</span>
+            <span className="timer-banner__time">{formatDuration(timerTaskTotalTime)}</span>
             <button 
               className={`btn btn--${timerStatus === 'running' ? 'danger' : 'success'}`}
               onClick={timerStatus === 'running' ? onStopTimer : () => onStartTimer(timerTask)}
@@ -177,6 +184,7 @@ export function ContentPanel({
           <div className="project-header">
             <div className="project-header__top">
               <input
+                key={`project-name-${project.id}`}
                 type="text"
                 className="project-header__title"
                 defaultValue={project.name}
@@ -200,6 +208,7 @@ export function ContentPanel({
             </div>
             
             <textarea
+              key={`project-desc-${project.id}`}
               className="project-header__description"
               placeholder="Add project description..."
               defaultValue={project.description || ''}
@@ -256,6 +265,7 @@ export function ContentPanel({
               <div className="task-table">
                 <div className="task-table__header">
                   <div className="task-table__col task-table__col--name">Task Name</div>
+                  <div className="task-table__col task-table__col--time">Time</div>
                   <div className="task-table__col task-table__col--status">Status</div>
                   <div className="task-table__col task-table__col--timer">Timer</div>
                   <div className="task-table__col task-table__col--menu"></div>
@@ -265,6 +275,12 @@ export function ContentPanel({
                   const isActive = timerTask?.id === task.id && timerStatus !== 'idle';
                   const isSelected = selectedTaskId === task.id;
                   const isRunning = timerTask?.id === task.id && timerStatus === 'running';
+                  
+                  // Calculate real-time task duration
+                  const savedDuration = taskDurations[task.id] || 0;
+                  const taskTime = isActive 
+                    ? savedDuration + getUnsavedTime()
+                    : savedDuration;
                   
                   return (
                     <div 
@@ -282,6 +298,11 @@ export function ContentPanel({
                         {task.description && (
                           <span className="task-table__description">{task.description}</span>
                         )}
+                      </div>
+                      <div className="task-table__col task-table__col--time">
+                        <span className={`task-table__time ${isActive ? 'task-table__time--active' : ''}`}>
+                          {taskTime > 0 ? formatDuration(taskTime) : '—'}
+                        </span>
                       </div>
                       <div className="task-table__col task-table__col--status">
                         <span className={getStatusBadgeClass(task.status)}>

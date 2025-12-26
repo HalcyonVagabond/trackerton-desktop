@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, useCallback, useState } from 'react';
 import { useOrganizations } from '../hooks/useOrganizations';
 import { useProjects } from '../hooks/useProjects';
 import { useTasks } from '../hooks/useTasks';
@@ -23,8 +23,57 @@ export function MenuBarPopup() {
     hydrated,
   } = useAppState();
   
-  const { display, status, start, stop, setTaskContext, task: timerTask } = timer;
+  // Timer context provides getUnsavedTime() - for total, use timerTaskSavedDuration + getUnsavedTime()
+  const { display, status, start, stop, setTaskContext, task: timerTask, getUnsavedTime } = timer;
   const { totalDuration, reload: reloadTimeStats } = useTaskTimeStats(selectedTaskId);
+  
+  // Track the timer task's saved duration (from DB) - separate from selectedTaskId
+  const [timerTaskSavedDuration, setTimerTaskSavedDuration] = useState(0);
+  const timerTaskIdRef = useRef<number | null>(null);
+  
+  // Fetch timer task's saved duration when timer task changes
+  useEffect(() => {
+    const fetchTimerTaskDuration = async () => {
+      if (!timerTask) {
+        setTimerTaskSavedDuration(0);
+        timerTaskIdRef.current = null;
+        return;
+      }
+      
+      if (timerTaskIdRef.current === timerTask.id) {
+        return; // Already have duration for this task
+      }
+      
+      timerTaskIdRef.current = timerTask.id;
+      try {
+        const duration = await window.electronAPI.getTotalDurationByTask(timerTask.id);
+        setTimerTaskSavedDuration(duration || 0);
+      } catch (error) {
+        console.error('Error fetching timer task duration:', error);
+        setTimerTaskSavedDuration(0);
+      }
+    };
+    
+    fetchTimerTaskDuration();
+  }, [timerTask]);
+  
+  // Refresh timer task duration after auto-saves (when status changes or periodically)
+  useEffect(() => {
+    if (!timerTask || status === 'idle') return;
+    
+    // Refresh duration every 5 seconds while timer is active to catch auto-saves
+    const interval = setInterval(async () => {
+      try {
+        const duration = await window.electronAPI.getTotalDurationByTask(timerTask.id);
+        setTimerTaskSavedDuration(duration || 0);
+      } catch (error) {
+        console.error('Error refreshing timer task duration:', error);
+      }
+    }, 5000);
+    
+    return () => clearInterval(interval);
+  }, [timerTask, status]);
+  
   const { organizations, loading: orgsLoading } = useOrganizations();
   const { projects, loading: projectsLoading } = useProjects(selectedOrganizationId);
   const { tasks, loading: tasksLoading } = useTasks(selectedProjectId);
@@ -229,6 +278,9 @@ export function MenuBarPopup() {
 
   // Can start/resume if: paused with a timer task, OR have a selected task and not running
   const canStart = (isPaused && timerTask) || (selectedTaskId !== null && !isRunning);
+  
+  // Calculate total time for display: DB saved duration + unsaved time
+  const timerTotalTime = timerTaskSavedDuration + getUnsavedTime();
 
   return (
     <div className="menubar-popup">
@@ -247,7 +299,9 @@ export function MenuBarPopup() {
         {/* Timer Display */}
         {isActive && (
           <div className="menubar-popup__timer">
-            <div className="menubar-popup__timer-display">{display}</div>
+            <div className="menubar-popup__timer-display">
+              {formatDuration(timerTotalTime)}
+            </div>
             <div className="menubar-popup__timer-task">
               {timerTask?.name || 'No task selected'}
             </div>
