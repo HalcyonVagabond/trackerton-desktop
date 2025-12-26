@@ -3,6 +3,9 @@
   "appId": "com.trackerton.app",
   "productName": "Trackerton",
   "asar": true,
+  "asarUnpack": [
+    "**/*.node"
+  ],
   "directories": {
     "output": "release"
   },
@@ -19,8 +22,11 @@
     ],
     "category": "public.app-category.productivity",
     "identity": null,
-    "icon": "build/icon.icns"
+    "icon": "build/icon.icns",
+    "hardenedRuntime": false
   },
+  "npmRebuild": true,
+  "buildDependenciesFromSource": true,
   "win": {
     "target": [
       {
