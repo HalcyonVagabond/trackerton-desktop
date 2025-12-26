@@ -40,7 +40,6 @@ timer-state.json
 selection-state.json
 
 #lockfile
-package-lock.json
 pnpm-lock.yaml
 yarn.lock
 /test-results/
