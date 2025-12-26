@@ -31,6 +31,18 @@ export function useTasks(projectId: number | null, statusFilter?: TaskStatus) {
     loadTasks()
   }, [loadTasks, projectId])
 
+  // Listen for data changes from other windows
+  useEffect(() => {
+    const unsubscribe = window.electronAPI.onDataChanged?.((data) => {
+      if (data.type === 'tasks') {
+        loadTasks()
+      }
+    })
+    return () => {
+      unsubscribe?.()
+    }
+  }, [loadTasks])
+
   const addTask = async (name: string, status: TaskStatus = 'todo') => {
     if (!projectId) throw new Error('No project selected')
     

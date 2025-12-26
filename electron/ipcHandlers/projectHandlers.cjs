@@ -8,7 +8,7 @@ const {
   DELETE_PROJECT,
 } = require('../constants/ipcChannels');
 
-function registerProjectHandlers() {
+function registerProjectHandlers(broadcastDataChanged) {
   ipcMain.handle(GET_PROJECTS, async (event, args) => {
     const { organizationId, statusFilter = null } = args || {};
     return await ProjectController.getProjects(organizationId, statusFilter);
@@ -17,16 +17,21 @@ function registerProjectHandlers() {
   ipcMain.handle(ADD_PROJECT, async (event, args) => {
     const { name, organizationId, description = null, status = 'in_progress' } = args || {};
     const newProject = await ProjectController.createProject(name, organizationId, description, status);
+    if (broadcastDataChanged) broadcastDataChanged('projects', 'add');
     return newProject;
   });
 
   ipcMain.handle(UPDATE_PROJECT, async (event, args) => {
     const { id, data } = args || {};
-    return await ProjectController.updateProject(id, data);
+    const result = await ProjectController.updateProject(id, data);
+    if (broadcastDataChanged) broadcastDataChanged('projects', 'update');
+    return result;
   });
 
   ipcMain.handle(DELETE_PROJECT, async (event, id) => {
-    return await ProjectController.deleteProject(id);
+    const result = await ProjectController.deleteProject(id);
+    if (broadcastDataChanged) broadcastDataChanged('projects', 'delete');
+    return result;
   });
 }
 

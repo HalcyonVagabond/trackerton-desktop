@@ -32,6 +32,7 @@ const ipcChannels = {
   UPDATE_SELECTION_STATE: 'selection-state-update',
   GET_SELECTION_STATE: 'selection-state-get',
   SELECTION_STATE: 'selection-state',
+  DATA_CHANGED: 'data-changed',
 }
 
 // Expose Trackerton API to renderer process
@@ -85,6 +86,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     }
   },
   updateTimerSavedElapsed: (savedElapsed: number) => ipcRenderer.send('timer-saved-elapsed-update', savedElapsed),
+  updateTimerTaskTotalDuration: (totalDuration: number) => ipcRenderer.send('timer-task-total-duration-update', totalDuration),
   sendTimerCommand: (command: string) => ipcRenderer.send(ipcChannels.SEND_TIMER_COMMAND, command),
   onTimerCommand: (callback: (command: string) => void) => {
     const listener = (_event: IpcRendererEvent, command: string) => callback(command)
@@ -103,6 +105,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on(ipcChannels.SELECTION_STATE, listener)
     return () => {
       ipcRenderer.removeListener(ipcChannels.SELECTION_STATE, listener)
+    }
+  },
+
+  // Data change notifications (for syncing data across windows)
+  onDataChanged: (callback: (data: { type: string; action: string }) => void) => {
+    const listener = (_event: IpcRendererEvent, data: any) => callback(data)
+    ipcRenderer.on(ipcChannels.DATA_CHANGED, listener)
+    return () => {
+      ipcRenderer.removeListener(ipcChannels.DATA_CHANGED, listener)
     }
   },
 

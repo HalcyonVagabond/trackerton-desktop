@@ -31,6 +31,18 @@ export function useProjects(organizationId: number | null, statusFilter?: Projec
     loadProjects()
   }, [loadProjects, organizationId])
 
+  // Listen for data changes from other windows
+  useEffect(() => {
+    const unsubscribe = window.electronAPI.onDataChanged?.((data) => {
+      if (data.type === 'projects') {
+        loadProjects()
+      }
+    })
+    return () => {
+      unsubscribe?.()
+    }
+  }, [loadProjects])
+
   const addProject = async (name: string, description?: string, status: ProjectStatus = 'in_progress') => {
     if (!organizationId) throw new Error('No organization selected')
     

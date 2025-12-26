@@ -23,6 +23,18 @@ export function useOrganizations(statusFilter?: OrganizationStatus) {
     loadOrganizations()
   }, [loadOrganizations])
 
+  // Listen for data changes from other windows
+  useEffect(() => {
+    const unsubscribe = window.electronAPI.onDataChanged?.((data) => {
+      if (data.type === 'organizations') {
+        loadOrganizations()
+      }
+    })
+    return () => {
+      unsubscribe?.()
+    }
+  }, [loadOrganizations])
+
   const addOrganization = async (name: string, status: OrganizationStatus = 'active') => {
     try {
       const newOrg = await window.electronAPI.addOrganization(name, status)

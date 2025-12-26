@@ -130,6 +130,7 @@ export function TimerProvider({ children }: { children: ReactNode }) {
       display: nextDisplay,
       task: newTask,
       updatedAt: Date.now(),
+      taskTotalDuration: normalizedElapsed, // Total from DB at start of session
     });
     // Sync saved elapsed with main process
     window.electronAPI.updateTimerSavedElapsed(normalizedElapsed);
@@ -212,6 +213,7 @@ export function TimerProvider({ children }: { children: ReactNode }) {
         previousElapsedRef.current = elapsedTime;
         // Notify main process of the save
         window.electronAPI.updateTimerSavedElapsed(elapsedTime);
+        // Note: Don't update taskTotalDuration here - it will be updated when starting a new task
         saved = true;
       }
     }
@@ -311,6 +313,13 @@ export function TimerProvider({ children }: { children: ReactNode }) {
           previousElapsedRef.current = currentElapsed;
           // Notify main process of the save so it can track for quit-time saving
           window.electronAPI.updateTimerSavedElapsed(currentElapsed);
+          // Update task total duration for tray display
+          try {
+            const totalDuration = await window.electronAPI.getTotalDurationByTask(taskId) || 0;
+            window.electronAPI.updateTimerTaskTotalDuration(totalDuration);
+          } catch (error) {
+            console.error('Failed to update task total duration:', error);
+          }
         } catch (error) {
           console.error('Auto-save failed:', error);
         }

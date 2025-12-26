@@ -7,23 +7,29 @@ const {
   DELETE_ORGANIZATION,
 } = require('../constants/ipcChannels');
 
-function registerOrganizationHandlers() {
+function registerOrganizationHandlers(broadcastDataChanged) {
   ipcMain.handle(GET_ORGANIZATIONS, async (event, statusFilter = null) => {
     return await OrganizationController.getOrganizations(statusFilter);
   });
 
   ipcMain.handle(ADD_ORGANIZATION, async (event, args) => {
     const { name, status = 'active' } = args || {};
-    return await OrganizationController.createOrganization(name, status);
+    const result = await OrganizationController.createOrganization(name, status);
+    if (broadcastDataChanged) broadcastDataChanged('organizations', 'add');
+    return result;
   });
 
   ipcMain.handle(UPDATE_ORGANIZATION, async (event, args) => {
     const { id, data } = args || {};
-    return await OrganizationController.updateOrganization(id, data);
+    const result = await OrganizationController.updateOrganization(id, data);
+    if (broadcastDataChanged) broadcastDataChanged('organizations', 'update');
+    return result;
   });
 
   ipcMain.handle(DELETE_ORGANIZATION, async (event, id) => {
-    return await OrganizationController.deleteOrganization(id);
+    const result = await OrganizationController.deleteOrganization(id);
+    if (broadcastDataChanged) broadcastDataChanged('organizations', 'delete');
+    return result;
   });
 }
 

@@ -8,7 +8,7 @@ const {
   DELETE_TASK,
 } = require('../constants/ipcChannels');
 
-function registerTaskHandlers() {
+function registerTaskHandlers(broadcastDataChanged) {
   ipcMain.handle(GET_TASKS, async (event, args) => {
     const { projectId, statusFilter = null } = args || {};
     return await TaskController.getTasks(projectId, statusFilter);
@@ -16,16 +16,22 @@ function registerTaskHandlers() {
 
   ipcMain.handle(ADD_TASK, async (event, args) => {
     const { name, projectId, description = null, status = 'todo' } = args || {};
-    return await TaskController.createTask(name, projectId, description, status);
+    const result = await TaskController.createTask(name, projectId, description, status);
+    if (broadcastDataChanged) broadcastDataChanged('tasks', 'add');
+    return result;
   });
 
   ipcMain.handle(UPDATE_TASK, async (event, args) => {
     const { id, data } = args || {};
-    return await TaskController.updateTask(id, data);
+    const result = await TaskController.updateTask(id, data);
+    if (broadcastDataChanged) broadcastDataChanged('tasks', 'update');
+    return result;
   });
 
   ipcMain.handle(DELETE_TASK, async (event, id) => {
-    return await TaskController.deleteTask(id);
+    const result = await TaskController.deleteTask(id);
+    if (broadcastDataChanged) broadcastDataChanged('tasks', 'delete');
+    return result;
   });
 }
 

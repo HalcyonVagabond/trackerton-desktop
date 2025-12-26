@@ -49,6 +49,8 @@ export interface TimerState {
   source: string
   /** The elapsed time value at which we last saved to the database */
   lastSavedElapsed?: number
+  /** Total accumulated time for the task from DB (used for tray display) */
+  taskTotalDuration?: number
 }
 
 export interface SelectionState {
@@ -98,6 +100,7 @@ export interface ElectronAPI {
   requestTimerState: () => Promise<TimerState>
   onTimerState: (callback: (state: TimerState) => void) => (() => void) | void
   updateTimerSavedElapsed: (savedElapsed: number) => void
+  updateTimerTaskTotalDuration: (totalDuration: number) => void
   sendTimerCommand: (command: 'start' | 'pause' | 'stop') => void
   onTimerCommand: (callback: (command: string) => void) => (() => void) | void
 
@@ -105,6 +108,9 @@ export interface ElectronAPI {
   updateSelectionState: (state: SelectionState) => void
   requestSelectionState: () => Promise<SelectionState>
   onSelectionState: (callback: (state: SelectionState) => void) => (() => void) | void
+
+  // Data change notifications (for syncing data across windows)
+  onDataChanged: (callback: (data: { type: string; action: string }) => void) => (() => void) | void
 
   // System idle time for auto-pause feature
   getSystemIdleTime: () => Promise<number>

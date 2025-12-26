@@ -111,20 +111,15 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   );
 
   // Browsing state setters (for task manager)
-  // Also persists to selection state so it survives app restarts
+  // NOTE: Browsing state is separate from selection state.
+  // Selection state only changes when a timer is started on a new task.
+  // Browsing state is NOT persisted - it's just for navigating the UI.
   const setBrowsingSelection = useCallback((organizationId: number | null, projectId: number | null, taskId: number | null) => {
     const sanitized = sanitizeSelection(organizationId, projectId, taskId);
     setBrowsingOrganizationIdState((prev) => (prev === sanitized.organizationId ? prev : sanitized.organizationId));
     setBrowsingProjectIdState((prev) => (prev === sanitized.projectId ? prev : sanitized.projectId));
     setBrowsingTaskIdState((prev) => (prev === sanitized.taskId ? prev : sanitized.taskId));
-    
-    // Also update selection state to persist browsing position across restarts
-    setSelectedOrganizationIdState((prev) => (prev === sanitized.organizationId ? prev : sanitized.organizationId));
-    setSelectedProjectIdState((prev) => (prev === sanitized.projectId ? prev : sanitized.projectId));
-    setSelectedTaskIdState((prev) => (prev === sanitized.taskId ? prev : sanitized.taskId));
-    
-    // Persist to main process
-    window.electronAPI.updateSelectionState(sanitized);
+    // DO NOT update selection state here - browsing is independent of timer selection
   }, []);
 
   const handleSetBrowsingOrganization = useCallback(
@@ -158,6 +153,18 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
 
       // Update selection to the new task
       setSelection(organizationId, projectId, taskId);
+
+      // Reset task total duration to 0 first to avoid showing old task's time
+      window.electronAPI.updateTimerTaskTotalDuration(0);
+
+      // Fetch and send the new task's total duration for tray display
+      try {
+        const totalDuration = await window.electronAPI.getTotalDurationByTask(taskId) || 0;
+        window.electronAPI.updateTimerTaskTotalDuration(totalDuration);
+      } catch (error) {
+        console.error('Failed to fetch task total duration:', error);
+        // Keep at 0 on error
+      }
 
       // Start the timer with the new task (include organization_id for persistence)
       const taskWithOrg = { ...task, organization_id: organizationId };

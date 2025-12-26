@@ -218,15 +218,21 @@ export function TaskManager() {
           rawProjects.map(async (project) => {
             const tasks = await window.electronAPI.getTasks(project.id, undefined);
             
+            // Add organization_id to each task for proper context when starting timer
+            const tasksWithOrg = tasks.map(task => ({
+              ...task,
+              organization_id: organizationId,
+            }));
+            
             // Apply saved task order from localStorage
             const taskOrderKey = `task-order-${project.id}`;
             const savedTaskOrder = localStorage.getItem(taskOrderKey);
-            let orderedTasks = tasks;
+            let orderedTasks = tasksWithOrg;
             
             if (savedTaskOrder) {
               try {
                 const orderArray: number[] = JSON.parse(savedTaskOrder);
-                orderedTasks = [...tasks].sort((a, b) => {
+                orderedTasks = [...tasksWithOrg].sort((a, b) => {
                   const aIndex = orderArray.indexOf(a.id);
                   const bIndex = orderArray.indexOf(b.id);
                   // Items not in order array go to the end
@@ -684,11 +690,17 @@ export function TaskManager() {
 
       setTimerActionPending(true);
       try {
-        // If starting a different task than the one currently running/paused, use startTaskFromBrowser
-        // which will stop the current task and start the new one
-        const isDifferentTask = timerTask && timerTask.id !== targetTask.id;
-        if (isDifferentTask || (timerStatus !== 'idle' && timerTask?.id !== targetTask.id)) {
-          // Get the organization and project IDs for the task
+        // Check if we're resuming the exact same task (same ID) or starting a different/new task
+        const isSameTask = timerTask && timerTask.id === targetTask.id;
+        const isResumingPausedTask = isSameTask && timerStatus === 'paused';
+        
+        if (isResumingPausedTask) {
+          // Resume the same paused task - just call start directly
+          const orgId = targetTask.organization_id ?? browsingOrganizationId;
+          const taskWithOrg = { ...targetTask, organization_id: orgId ?? undefined };
+          start(taskWithOrg);
+        } else {
+          // Starting a new/different task - use startTaskFromBrowser to properly reset timer state
           const orgId = targetTask.organization_id ?? browsingOrganizationId;
           const projId = targetTask.project_id ?? browsingProjectId;
           if (orgId && projId) {
@@ -696,11 +708,6 @@ export function TaskManager() {
           } else {
             console.warn('Cannot start task: missing organization or project ID');
           }
-        } else {
-          // Resume the current task (ensure organization_id is included)
-          const orgId = targetTask.organization_id ?? browsingOrganizationId;
-          const taskWithOrg = { ...targetTask, organization_id: orgId ?? undefined };
-          start(taskWithOrg);
         }
       } catch (error) {
         console.error('Failed to start timer', error);

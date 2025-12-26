@@ -200,19 +200,13 @@ export function MenuBarPopup() {
 
   const handleStopClick = async () => {
     await stop();
-    // After stopping, clear the timer context to go back to idle state
-    setTaskContext(null, 0);
+    // Reload time stats to show updated total
     if (selectedTaskId) {
       await reloadTimeStats();
-      // Re-set task context without elapsed time to show correct total
-      const selectedTask = enrichTaskWithContext(tasks.find(t => t.id === selectedTaskId) ?? null);
-      if (selectedTask) {
-        setTaskContext(selectedTask, 0);
-      }
     }
   };
 
-  const handleStart = () => {
+  const handleStart = async () => {
     // When paused, resume the timer task (ensure organization_id is included)
     if (isPaused && timerTask) {
       const orgId = timerTask.organization_id ?? selectedOrganizationId;
@@ -225,6 +219,17 @@ export function MenuBarPopup() {
     if (!selectedTaskId) return;
     const selectedTask = enrichTaskWithContext(tasks.find(t => t.id === selectedTaskId) ?? null);
     if (selectedTask) {
+      // Reset task total duration first to prevent showing old task's time
+      window.electronAPI.updateTimerTaskTotalDuration(0);
+      
+      // Fetch and send the new task's total duration for tray display
+      try {
+        const taskTotalDuration = await window.electronAPI.getTotalDurationByTask(selectedTaskId) || 0;
+        window.electronAPI.updateTimerTaskTotalDuration(taskTotalDuration);
+      } catch (error) {
+        console.error('Failed to fetch task total duration:', error);
+        // Keep at 0 on error
+      }
       start(selectedTask);
     }
   };
@@ -270,12 +275,15 @@ export function MenuBarPopup() {
     window.electronAPI?.openMainWindow();
   };
 
-  // Format duration helper
+  // Format duration helper - no leading zeros on first segment
   const formatDuration = (seconds: number) => {
     const h = Math.floor(seconds / 3600);
     const m = Math.floor((seconds % 3600) / 60);
     const s = seconds % 60;
-    return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+    if (h > 0) {
+      return `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+    }
+    return `${m}:${s.toString().padStart(2, '0')}`;
   };
 
   // Can start/resume if: paused with a timer task, OR have a selected task and not running

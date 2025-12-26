@@ -87,6 +87,7 @@ let timerState: {
   source: string;
   startTimeRef: number; // When the timer was started (used to calculate elapsed time)
   lastSavedElapsed: number; // Last elapsed time that was saved to the database
+  taskTotalDuration: number; // Total accumulated time for the task (from DB + current session)
 } = {
   status: 'idle',
   elapsedTime: 0,
@@ -96,6 +97,7 @@ let timerState: {
   source: 'main',
   startTimeRef: 0,
   lastSavedElapsed: 0,
+  taskTotalDuration: 0,
 }
 
 // Timer state persistence
@@ -128,6 +130,7 @@ function loadTimerState() {
         source: 'main',
         startTimeRef: 0,
         lastSavedElapsed: elapsedTime, // Match elapsed since previous quit saved it
+        taskTotalDuration: parsed.taskTotalDuration || 0,
       }
     }
   } catch (error) {
@@ -144,6 +147,7 @@ function saveTimerState() {
       display: timerState.display,
       task: timerState.task,
       lastSavedElapsed: timerState.lastSavedElapsed,
+      taskTotalDuration: timerState.taskTotalDuration,
     }
     fs.writeFileSync(getTimerStateFilePath(), JSON.stringify(stateToSave, null, 2), 'utf-8')
   } catch (error) {
@@ -208,6 +212,7 @@ function broadcastTimerState() {
 
 ipcMain.on('timer-state-update', (_event, state) => {
   const previousStatus = timerState.status
+  const previousTaskId = timerState.task?.id
   
   timerState = {
     ...timerState,
@@ -216,11 +221,17 @@ ipcMain.on('timer-state-update', (_event, state) => {
     updatedAt: state?.updatedAt ?? Date.now(),
   }
   
+  const newTaskId = state.task?.id
+  const taskChanged = previousTaskId !== newTaskId
+  
   // Handle timer start/stop in main process
-  if (state.status === 'running' && previousStatus !== 'running') {
-    // Starting the timer - initialize start time reference
-    timerState.startTimeRef = Date.now() - (timerState.elapsedTime * 1000)
-    startMainProcessTimer()
+  if (state.status === 'running') {
+    // If task changed or starting from non-running state, reset the timer reference
+    if (taskChanged || previousStatus !== 'running') {
+      // Starting the timer or switching tasks - initialize start time reference
+      timerState.startTimeRef = Date.now() - (timerState.elapsedTime * 1000)
+      startMainProcessTimer()
+    }
   } else if (state.status !== 'running' && previousStatus === 'running') {
     // Stopping or pausing the timer
     stopMainProcessTimer()
@@ -241,6 +252,26 @@ ipcMain.on('timer-saved-elapsed-update', (_event, savedElapsed: number) => {
   saveTimerState()
   // Broadcast the updated state so all windows sync their previousElapsedRef
   broadcastTimerState()
+})
+
+// Update the task's total duration (from DB, used for tray display)
+ipcMain.on('timer-task-total-duration-update', (_event, totalDuration: number) => {
+  const previousDuration = timerState.taskTotalDuration
+  timerState.taskTotalDuration = totalDuration
+  
+  // When taskTotalDuration changes significantly (switching tasks), reset elapsed time tracking
+  // This is detected by receiving 0 first (the reset signal before fetching new task's duration)
+  if (totalDuration === 0 && previousDuration !== 0) {
+    // Reset ALL time tracking for the new task
+    timerState.elapsedTime = 0
+    timerState.lastSavedElapsed = 0
+    timerState.display = '0:00'
+    // Stop the timer interval - it will be restarted when timer-state-update comes in
+    stopMainProcessTimer()
+  }
+  
+  saveTimerState()
+  updateTrayTitle()
 })
 
 // Theme management
@@ -306,6 +337,17 @@ function broadcastSelectionState() {
   }
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send('selection-state', selectionState)
+  }
+}
+
+// Broadcast data changes to all windows so they can refetch
+function broadcastDataChanged(type: 'organizations' | 'projects' | 'tasks' | 'timeEntries', action: 'add' | 'update' | 'delete') {
+  const payload = { type, action }
+  if (menuBarWindow && !menuBarWindow.isDestroyed()) {
+    menuBarWindow.webContents.send('data-changed', payload)
+  }
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('data-changed', payload)
   }
 }
 
@@ -419,7 +461,10 @@ function updateTrayTitle() {
   
   if (timerState.status === 'running' || timerState.status === 'paused') {
     const statusIcon = timerState.status === 'running' ? '●' : '❚❚';
-    tray.setTitle(` ${statusIcon} ${timerState.display}`)
+    // Show total accumulated time: DB total + current session
+    // elapsedTime is current session only, taskTotalDuration is from DB
+    const totalTime = timerState.taskTotalDuration + timerState.elapsedTime
+    tray.setTitle(` ${statusIcon} ${formatDuration(totalTime)}`)
   } else {
     tray.setTitle('')
   }
@@ -556,6 +601,7 @@ app.whenReady().then(async () => {
             source: 'main',
             startTimeRef: 0,
             lastSavedElapsed: 0,
+            taskTotalDuration: 0,
           }
           saveTimerState()
         }
@@ -571,14 +617,15 @@ app.whenReady().then(async () => {
           source: 'main',
           startTimeRef: 0,
           lastSavedElapsed: 0,
+          taskTotalDuration: 0,
         }
         saveTimerState()
       }
     }
     
-    registerOrganizationHandlers()
-    registerProjectHandlers()
-    registerTaskHandlers()
+    registerOrganizationHandlers(broadcastDataChanged)
+    registerProjectHandlers(broadcastDataChanged)
+    registerTaskHandlers(broadcastDataChanged)
     registerTimeEntryHandlers()
   } catch (error) {
     console.error('Error during startup:', error)
