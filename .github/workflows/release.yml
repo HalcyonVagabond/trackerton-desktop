@@ -1,0 +1,53 @@
+name: Build and Release
+
+on:
+  push:
+    branches:
+      - main
+    # Only trigger when version changes in package.json
+    paths:
+      - 'package.json'
+      - 'src/**'
+      - 'electron/**'
+      - 'public/**'
+      - 'build/**'
+
+  # Allow manual trigger
+  workflow_dispatch:
+
+jobs:
+  release:
+    runs-on: ${{ matrix.os }}
+    
+    strategy:
+      matrix:
+        os: [macos-latest, windows-latest]
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build and Release (macOS)
+        if: matrix.os == 'macos-latest'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          npm run build:mac
+          npx electron-builder --mac --publish always
+
+      - name: Build and Release (Windows)
+        if: matrix.os == 'windows-latest'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          npm run build:win
+          npx electron-builder --win --publish always

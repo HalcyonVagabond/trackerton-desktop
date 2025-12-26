@@ -1,6 +1,6 @@
 {
   "name": "trackerton-react",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "main": "dist-electron/main/index.mjs",
   "description": "Trackerton - The time-tracking app (React Edition)",
   "author": "HalcyonVagabond",
@@ -19,6 +19,11 @@
     "build:win": "tsc && vite build && electron-builder --win",
     "build:all": "tsc && vite build && electron-builder --mac --win",
     "release": "tsc && vite build && electron-builder --mac --win --publish always",
+    "postrelease": "npm rebuild",
+    "postbuild": "npm rebuild",
+    "postbuild:mac": "npm rebuild",
+    "postbuild:win": "npm rebuild",
+    "postbuild:all": "npm rebuild",
     "preview": "vite preview",
     "pretest": "vite build --mode=test",
     "test": "vitest run"
