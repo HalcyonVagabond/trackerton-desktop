@@ -14,6 +14,8 @@ import { DeleteConfirmModal } from '../components/DeleteConfirmModal';
 import { NavPanel } from '../components/layout/NavPanel';
 import { ContentPanel } from '../components/layout/ContentPanel';
 import { DetailPanel } from '../components/layout/DetailPanel';
+import { WelcomeModal } from '../components/WelcomeModal';
+import { LicenseAcceptanceModal, hasAcceptedLicense } from '../components/LicenseAcceptanceModal';
 import '../styles/app-layout.css';
 
 // Modal state types for CRUD operations
@@ -46,7 +48,8 @@ export function TaskManager() {
     startTaskFromBrowser,
     hydrated,
   } = useAppState();
-  const { status: timerStatus, display: timerDisplay, task: timerTask, start, stop, pause: timerPause, elapsedTime: timerElapsedTime, getRealTimeTotal } = timer;
+  // Timer context provides getUnsavedTime() - for total, use taskDurations[taskId] + getUnsavedTime()
+  const { status: timerStatus, task: timerTask, start, stop, pause: timerPause, reset: timerReset, getUnsavedTime } = timer;
 
   // Auto-pause hook - pauses timer when system is idle
   const handleAutoPause = useCallback(() => {
@@ -71,6 +74,10 @@ export function TaskManager() {
   const [timerActionPending, setTimerActionPending] = useState(false);
   const [detailPanelOpen, setDetailPanelOpen] = useState(false);
   const [projectTotalTime, setProjectTotalTime] = useState(0);
+  const [taskDurations, setTaskDurations] = useState<Record<number, number>>({});
+  
+  // License acceptance state - check if already accepted
+  const [licenseAccepted, setLicenseAccepted] = useState(() => hasAcceptedLicense());
   
   // Status filter states
   const [projectStatusFilter, setProjectStatusFilter] = useState<ProjectStatus | ''>('');
@@ -143,18 +150,19 @@ export function TaskManager() {
     };
   }, [timerTask, projects, organizations]);
 
-  // Calculate real-time project total (saved time + running timer if applicable)
+  // Calculate real-time project total (saved time + unsaved timer time if applicable)
   const realTimeProjectTotal = useMemo(() => {
-    // Start with the saved project total time
+    // Start with the saved project total time (includes all auto-saved time entries)
     let total = projectTotalTime;
     
-    // If timer is running/paused for a task in the current project, add the elapsed time
+    // If timer is running/paused for a task in the current project, add only the UNSAVED time
+    // This prevents double-counting since auto-saved time is already in projectTotalTime
     if (timerTask && timerTask.project_id === browsingProjectId && timerStatus !== 'idle') {
-      total += timerElapsedTime;
+      total += getUnsavedTime();
     }
     
     return total;
-  }, [projectTotalTime, timerTask, browsingProjectId, timerStatus, timerElapsedTime]);
+  }, [projectTotalTime, timerTask, browsingProjectId, timerStatus, getUnsavedTime]);
 
   const loadTaskDetails = useCallback(
     async (projectId: number, taskId: number, projectOverride?: ProjectWithTasks | null) => {
@@ -207,23 +215,68 @@ export function TaskManager() {
       try {
         const rawProjects = await window.electronAPI.getProjects(organizationId, undefined);
         const projectsWithTasks = await Promise.all(
-          rawProjects.map(async (project) => ({
-            ...project,
-            tasks: await window.electronAPI.getTasks(project.id, undefined),
-          })),
+          rawProjects.map(async (project) => {
+            const tasks = await window.electronAPI.getTasks(project.id, undefined);
+            
+            // Apply saved task order from localStorage
+            const taskOrderKey = `task-order-${project.id}`;
+            const savedTaskOrder = localStorage.getItem(taskOrderKey);
+            let orderedTasks = tasks;
+            
+            if (savedTaskOrder) {
+              try {
+                const orderArray: number[] = JSON.parse(savedTaskOrder);
+                orderedTasks = [...tasks].sort((a, b) => {
+                  const aIndex = orderArray.indexOf(a.id);
+                  const bIndex = orderArray.indexOf(b.id);
+                  // Items not in order array go to the end
+                  if (aIndex === -1 && bIndex === -1) return 0;
+                  if (aIndex === -1) return 1;
+                  if (bIndex === -1) return -1;
+                  return aIndex - bIndex;
+                });
+              } catch {
+                // Ignore invalid JSON
+              }
+            }
+            
+            return { ...project, tasks: orderedTasks };
+          }),
         );
 
         if (!isMounted.current) {
           return;
         }
 
-        setProjects(projectsWithTasks);
+        // Apply saved project order from localStorage
+        const projectOrderKey = `project-order-${organizationId}`;
+        const savedProjectOrder = localStorage.getItem(projectOrderKey);
+        let orderedProjects = projectsWithTasks;
+        
+        if (savedProjectOrder) {
+          try {
+            const orderArray: number[] = JSON.parse(savedProjectOrder);
+            orderedProjects = [...projectsWithTasks].sort((a, b) => {
+              const aIndex = orderArray.indexOf(a.id);
+              const bIndex = orderArray.indexOf(b.id);
+              // Items not in order array go to the end
+              if (aIndex === -1 && bIndex === -1) return 0;
+              if (aIndex === -1) return 1;
+              if (bIndex === -1) return -1;
+              return aIndex - bIndex;
+            });
+          } catch {
+            // Ignore invalid JSON
+          }
+        }
+
+        setProjects(orderedProjects);
 
   const requestedProjectId = options?.projectId ?? null;
   const requestedTaskId = options?.taskId ?? null;
 
-        if (requestedProjectId && projectsWithTasks.some((proj) => proj.id === requestedProjectId)) {
-          const projectForSelection = projectsWithTasks.find((proj) => proj.id === requestedProjectId) ?? null;
+        if (requestedProjectId && orderedProjects.some((proj) => proj.id === requestedProjectId)) {
+          const projectForSelection = orderedProjects.find((proj) => proj.id === requestedProjectId) ?? null;
           setExpandedProjects((prev) => {
             const next = new Set(prev);
             next.add(requestedProjectId);
@@ -366,35 +419,50 @@ export function TaskManager() {
     previousTimerStatus.current = timerStatus;
   }, [timerStatus, timerTask, loadTaskDetails, browsingTaskId]);
 
-  // Calculate project total time when project changes
-  useEffect(() => {
-    const loadProjectTotalTime = async () => {
-      if (!browsingProjectId) {
-        setProjectTotalTime(0);
-        return;
-      }
-      
-      const project = projects.find(p => p.id === browsingProjectId);
-      if (!project || !project.tasks || project.tasks.length === 0) {
-        setProjectTotalTime(0);
-        return;
-      }
-      
-      try {
-        // Sum up all task durations for this project
-        const taskDurations = await Promise.all(
-          project.tasks.map(task => window.electronAPI.getTotalDurationByTask(task.id))
-        );
-        const total = taskDurations.reduce((sum, duration) => sum + (duration || 0), 0);
-        setProjectTotalTime(total);
-      } catch (error) {
-        console.error('Failed to load project total time:', error);
-        setProjectTotalTime(0);
-      }
-    };
+  // Calculate project total time and task durations when project changes
+  const reloadTaskDurations = useCallback(async () => {
+    if (!browsingProjectId) {
+      setProjectTotalTime(0);
+      setTaskDurations({});
+      return;
+    }
     
-    void loadProjectTotalTime();
-  }, [browsingProjectId, projects, taskDetail]); // Re-run when taskDetail changes (new time entries)
+    const project = projects.find(p => p.id === browsingProjectId);
+    if (!project || !project.tasks || project.tasks.length === 0) {
+      setProjectTotalTime(0);
+      setTaskDurations({});
+      return;
+    }
+    
+    try {
+      // Fetch all task durations
+      const durations = await Promise.all(
+        project.tasks.map(async (task) => ({
+          taskId: task.id,
+          duration: await window.electronAPI.getTotalDurationByTask(task.id) || 0
+        }))
+      );
+      
+      // Build duration map
+      const durationMap: Record<number, number> = {};
+      let total = 0;
+      for (const { taskId, duration } of durations) {
+        durationMap[taskId] = duration;
+        total += duration;
+      }
+      
+      setTaskDurations(durationMap);
+      setProjectTotalTime(total);
+    } catch (error) {
+      console.error('Failed to load project total time:', error);
+      setProjectTotalTime(0);
+      setTaskDurations({});
+    }
+  }, [browsingProjectId, projects]);
+
+  useEffect(() => {
+    void reloadTaskDurations();
+  }, [reloadTaskDurations, taskDetail]); // Re-run when taskDetail changes (new time entries)
 
   const handleOrganizationChange = async (event: ChangeEvent<HTMLSelectElement>) => {
     const orgId = event.target.value ? Number(event.target.value) : null;
@@ -537,6 +605,8 @@ export function TaskManager() {
 
     setBrowsingSelection(browsingOrganizationId, projectId, taskId);
     await loadTaskDetails(projectId, taskId);
+    // Refresh task durations to ensure header/row times are in sync with detail panel
+    await reloadTaskDurations();
     setDetailPanelOpen(true);
   };
   
@@ -590,13 +660,15 @@ export function TaskManager() {
         if (activeTask.project_id === browsingProjectId && activeTask.id === browsingTaskId) {
           await loadTaskDetails(activeTask.project_id, activeTask.id);
         }
+        // Also refresh task durations to keep header/row times in sync
+        await reloadTaskDurations();
       }
     } catch (error) {
       console.error('Failed to stop timer', error);
     } finally {
       setTimerActionPending(false);
     }
-  }, [timerActionPending, timerStatus, timerTask, stop, browsingProjectId, browsingTaskId, loadTaskDetails]);
+  }, [timerActionPending, timerStatus, timerTask, stop, browsingProjectId, browsingTaskId, loadTaskDetails, reloadTaskDurations]);
 
   const handleStartTimer = useCallback(
     async (taskOverride?: Task | null) => {
@@ -918,9 +990,9 @@ export function TaskManager() {
           setExpandedProjects(new Set());
           lastLoadedOrganizationId.current = null;
         }
-        // Stop timer if a task in this org was being tracked
+        // Reset timer if a task in this org was being tracked
         if (timerTask?.organization_id === deleteModal.id) {
-          await stop();
+          await timerReset();
         }
       } else if (deleteModal.type === 'project') {
         await window.electronAPI.deleteProject(deleteModal.id);
@@ -930,9 +1002,9 @@ export function TaskManager() {
           setBrowsingSelection(browsingOrganizationId, null, null);
           setTaskDetail(null);
         }
-        // Stop timer if a task in this project was being tracked
+        // Reset timer if a task in this project was being tracked
         if (timerTask?.project_id === deleteModal.id) {
-          await stop();
+          await timerReset();
         }
       } else if (deleteModal.type === 'task') {
         await window.electronAPI.deleteTask(deleteModal.id);
@@ -947,9 +1019,9 @@ export function TaskManager() {
           setBrowsingSelection(browsingOrganizationId, browsingProjectId, null);
           setTaskDetail(null);
         }
-        // Stop timer if deleted task was being tracked
+        // Reset timer if deleted task was being tracked
         if (timerTask?.id === deleteModal.id) {
-          await stop();
+          await timerReset();
         }
       }
 
@@ -958,14 +1030,14 @@ export function TaskManager() {
       console.error(`Failed to delete ${deleteModal.type}`, error);
       alert(`Failed to delete ${deleteModal.type}`);
     }
-  }, [deleteModal, browsingOrganizationId, browsingProjectId, browsingTaskId, setBrowsingSelection, timerTask, stop]);
+  }, [deleteModal, browsingOrganizationId, browsingProjectId, browsingTaskId, setBrowsingSelection, timerTask, timerReset]);
 
   // Close delete modal
   const closeDeleteModal = useCallback(() => {
     setDeleteModal(null);
   }, []);
 
-  // Reorder projects (local state only - persists until refresh)
+  // Reorder projects - saves order to localStorage for persistence
   const handleReorderProjects = useCallback((projectId: number, newIndex: number) => {
     setProjects(prevProjects => {
       const projectIndex = prevProjects.findIndex(p => p.id === projectId);
@@ -974,11 +1046,19 @@ export function TaskManager() {
       const newProjects = [...prevProjects];
       const [removed] = newProjects.splice(projectIndex, 1);
       newProjects.splice(newIndex, 0, removed);
+      
+      // Save order to localStorage
+      if (browsingOrganizationId) {
+        const orderKey = `project-order-${browsingOrganizationId}`;
+        const order = newProjects.map(p => p.id);
+        localStorage.setItem(orderKey, JSON.stringify(order));
+      }
+      
       return newProjects;
     });
-  }, []);
+  }, [browsingOrganizationId]);
 
-  // Reorder tasks within a project (local state only - persists until refresh)
+  // Reorder tasks within a project - saves order to localStorage for persistence
   const handleReorderTasks = useCallback((taskId: number, projectId: number, newIndex: number) => {
     setProjects(prevProjects => {
       return prevProjects.map(project => {
@@ -991,6 +1071,11 @@ export function TaskManager() {
         const [removed] = newTasks.splice(taskIndex, 1);
         newTasks.splice(newIndex, 0, removed);
         
+        // Save task order to localStorage
+        const orderKey = `task-order-${projectId}`;
+        const order = newTasks.map(t => t.id);
+        localStorage.setItem(orderKey, JSON.stringify(order));
+        
         return { ...project, tasks: newTasks };
       });
     });
@@ -999,6 +1084,14 @@ export function TaskManager() {
   return (
     <div className="app-layout" data-theme={theme}>
       <LoadingOverlay visible={isOverlayVisible} logoSrc={loadingLogo} />
+      
+      {/* License acceptance modal - shows before anything else on first launch */}
+      {!licenseAccepted && (
+        <LicenseAcceptanceModal onAccept={() => setLicenseAccepted(true)} />
+      )}
+      
+      {/* Welcome modal - only shows after license is accepted */}
+      {licenseAccepted && <WelcomeModal />}
 
       {/* Left Navigation Panel */}
       <NavPanel
@@ -1040,6 +1133,8 @@ export function TaskManager() {
         onAddTask={handleAddTask}
         onEditTask={handleEditTask}
         onDeleteTask={handleDeleteTask}
+        onReorderProjects={handleReorderProjects}
+        onReorderTasks={handleReorderTasks}
         timerTask={timerTask}
         timerStatus={timerStatus}
         effectiveTheme={theme}
@@ -1058,9 +1153,10 @@ export function TaskManager() {
         selectedTaskId={browsingTaskId}
         project={projects.find((p) => p.id === browsingProjectId) || null}
         projectTotalTime={realTimeProjectTotal}
+        taskDurations={taskDurations}
         timerTask={timerTask}
         timerStatus={timerStatus}
-        timerDisplay={timerDisplay}
+        getUnsavedTime={getUnsavedTime}
         onProjectNameChange={(name) => browsingProjectId && handleProjectNameBlur(browsingProjectId, name)}
         onProjectDescriptionChange={(desc) => browsingProjectId && handleProjectDescriptionBlur(browsingProjectId, desc)}
         onProjectStatusChange={(status) => browsingProjectId && handleProjectStatusChange(browsingProjectId, status)}
@@ -1081,8 +1177,7 @@ export function TaskManager() {
         loadingTask={loadingTask}
         timerTask={timerTask}
         timerStatus={timerStatus}
-        timerDisplay={timerDisplay}
-        getRealTimeTotal={getRealTimeTotal}
+        getUnsavedTime={getUnsavedTime}
         onTaskNameChange={(name) => browsingTaskId && handleTaskNameBlur(browsingTaskId, name)}
         onTaskDescriptionChange={(desc) => browsingTaskId && handleTaskDescriptionBlur(browsingTaskId, desc)}
         onTaskStatusChange={(status) => browsingTaskId && handleTaskStatusChange(browsingTaskId, status)}

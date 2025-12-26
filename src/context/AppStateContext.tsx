@@ -142,7 +142,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   // Start a task from the browser (stops current and starts new)
   const startTaskFromBrowser = useCallback(
     async (organizationId: number, projectId: number, taskId: number, task: any) => {
-      // Stop current task if running
+      // Stop current task if running (saves any unsaved time)
       if (timer.status === 'running' || timer.status === 'paused') {
         await timer.stop();
       }
@@ -150,8 +150,8 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       // Update selection to the new task
       setSelection(organizationId, projectId, taskId);
 
-      // Start the timer with the new task
-      timer.start(task);
+      // Start the timer with the new task, forcing reset to 0
+      timer.start(task, true);
     },
     [timer, setSelection],
   );

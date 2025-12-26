@@ -77,6 +77,10 @@ interface NavPanelProps {
   onEditTask: (taskId: number) => void;
   onDeleteTask: (taskId: number) => void;
   
+  // Reorder callbacks
+  onReorderProjects?: (projectId: number, newIndex: number) => void;
+  onReorderTasks?: (taskId: number, projectId: number, newIndex: number) => void;
+  
   // Timer state
   timerTask: Task | null;
   timerStatus: 'idle' | 'running' | 'paused';
@@ -156,6 +160,8 @@ export function NavPanel({
   onAddTask,
   onEditTask,
   onDeleteTask,
+  onReorderProjects,
+  onReorderTasks,
   timerTask,
   timerStatus,
   effectiveTheme,
@@ -168,6 +174,90 @@ export function NavPanel({
 }: NavPanelProps) {
   const [orgMenuOpen, setOrgMenuOpen] = useState(false);
   const [settingsMenuOpen, setSettingsMenuOpen] = useState(false);
+  
+  // Drag state for projects
+  const [draggedProjectId, setDraggedProjectId] = useState<number | null>(null);
+  const [dragOverProjectId, setDragOverProjectId] = useState<number | null>(null);
+  
+  // Drag state for tasks
+  const [draggedTaskId, setDraggedTaskId] = useState<number | null>(null);
+  const [draggedTaskProjectId, setDraggedTaskProjectId] = useState<number | null>(null);
+  const [dragOverTaskId, setDragOverTaskId] = useState<number | null>(null);
+
+  // Project drag handlers
+  const handleProjectDragStart = (e: React.DragEvent, projectId: number) => {
+    setDraggedProjectId(projectId);
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', `project:${projectId}`);
+  };
+
+  const handleProjectDragEnd = () => {
+    setDraggedProjectId(null);
+    setDragOverProjectId(null);
+  };
+
+  const handleProjectDragOver = (e: React.DragEvent, projectId: number) => {
+    e.preventDefault();
+    if (draggedProjectId && draggedProjectId !== projectId) {
+      setDragOverProjectId(projectId);
+    }
+  };
+
+  const handleProjectDragLeave = () => {
+    setDragOverProjectId(null);
+  };
+
+  const handleProjectDrop = (e: React.DragEvent, targetProjectId: number) => {
+    e.preventDefault();
+    if (draggedProjectId && draggedProjectId !== targetProjectId && onReorderProjects) {
+      const targetIndex = projects.findIndex(p => p.id === targetProjectId);
+      onReorderProjects(draggedProjectId, targetIndex);
+    }
+    setDraggedProjectId(null);
+    setDragOverProjectId(null);
+  };
+
+  // Task drag handlers
+  const handleTaskDragStart = (e: React.DragEvent, taskId: number, projectId: number) => {
+    e.stopPropagation();
+    setDraggedTaskId(taskId);
+    setDraggedTaskProjectId(projectId);
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', `task:${taskId}:${projectId}`);
+  };
+
+  const handleTaskDragEnd = () => {
+    setDraggedTaskId(null);
+    setDraggedTaskProjectId(null);
+    setDragOverTaskId(null);
+  };
+
+  const handleTaskDragOver = (e: React.DragEvent, taskId: number, projectId: number) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (draggedTaskId && draggedTaskId !== taskId && draggedTaskProjectId === projectId) {
+      setDragOverTaskId(taskId);
+    }
+  };
+
+  const handleTaskDragLeave = () => {
+    setDragOverTaskId(null);
+  };
+
+  const handleTaskDrop = (e: React.DragEvent, targetTaskId: number, projectId: number) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (draggedTaskId && draggedTaskId !== targetTaskId && draggedTaskProjectId === projectId && onReorderTasks) {
+      const project = projects.find(p => p.id === projectId);
+      if (project) {
+        const targetIndex = project.tasks.findIndex(t => t.id === targetTaskId);
+        onReorderTasks(draggedTaskId, projectId, targetIndex);
+      }
+    }
+    setDraggedTaskId(null);
+    setDraggedTaskProjectId(null);
+    setDragOverTaskId(null);
+  };
   
   // Calculate project total times
   const projectTotals = useMemo(() => {
@@ -383,11 +473,19 @@ export function NavPanel({
                 const isExpanded = expandedProjects.has(project.id);
                 const isSelected = selectedProjectId === project.id;
                 const taskCount = project.tasks?.length || 0;
+                const isDragging = draggedProjectId === project.id;
+                const isDragOver = dragOverProjectId === project.id;
                 
                 return (
                   <div 
                     key={project.id} 
-                    className={`project-item ${isExpanded ? 'project-item--expanded' : ''} ${isSelected && !selectedTaskId ? 'project-item--selected' : ''}`}
+                    className={`project-item ${isExpanded ? 'project-item--expanded' : ''} ${isSelected && !selectedTaskId ? 'project-item--selected' : ''} ${isDragging ? 'project-item--dragging' : ''} ${isDragOver ? 'project-item--drag-over' : ''}`}
+                    draggable={!!onReorderProjects}
+                    onDragStart={(e) => handleProjectDragStart(e, project.id)}
+                    onDragEnd={handleProjectDragEnd}
+                    onDragOver={(e) => handleProjectDragOver(e, project.id)}
+                    onDragLeave={handleProjectDragLeave}
+                    onDrop={(e) => handleProjectDrop(e, project.id)}
                   >
                     <div 
                       className="project-item__header"
@@ -396,6 +494,9 @@ export function NavPanel({
                         onSelectProject(project.id);
                       }}
                     >
+                      {onReorderProjects && (
+                        <span className="drag-handle" title="Drag to reorder">⋮⋮</span>
+                      )}
                       <span className="project-item__expand">
                         {taskCount > 0 ? '›' : ''}
                       </span>
@@ -416,13 +517,24 @@ export function NavPanel({
                         {project.tasks.map(task => {
                           const isTaskSelected = selectedTaskId === task.id;
                           const isActive = timerTask?.id === task.id && timerStatus !== 'idle';
+                          const isTaskDragging = draggedTaskId === task.id;
+                          const isTaskDragOver = dragOverTaskId === task.id;
                           
                           return (
                             <div
                               key={task.id}
-                              className={`task-item ${isTaskSelected ? 'task-item--selected' : ''} ${isActive ? 'task-item--active' : ''}`}
+                              className={`task-item ${isTaskSelected ? 'task-item--selected' : ''} ${isActive ? 'task-item--active' : ''} ${isTaskDragging ? 'task-item--dragging' : ''} ${isTaskDragOver ? 'task-item--drag-over' : ''}`}
                               onClick={() => onSelectTask(project.id, task.id)}
+                              draggable={!!onReorderTasks}
+                              onDragStart={(e) => handleTaskDragStart(e, task.id, project.id)}
+                              onDragEnd={handleTaskDragEnd}
+                              onDragOver={(e) => handleTaskDragOver(e, task.id, project.id)}
+                              onDragLeave={handleTaskDragLeave}
+                              onDrop={(e) => handleTaskDrop(e, task.id, project.id)}
                             >
+                              {onReorderTasks && (
+                                <span className="drag-handle drag-handle--small" title="Drag to reorder">⋮⋮</span>
+                              )}
                               <span className="task-item__indicator" />
                               <span className="task-item__name">{task.name}</span>
                               <span className={getStatusBadgeClass(task.status)} style={{ fontSize: '10px', padding: '1px 6px' }}>
