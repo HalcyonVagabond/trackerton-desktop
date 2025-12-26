@@ -50,6 +50,8 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ELECTRON_BUILDER_ALLOW_UNRESOLVED_DEPENDENCIES: true
         run: |
+          # Clean any pre-built native modules to force rebuild
+          rm -rf node_modules/**/*.node
           npm run build
           npx electron-builder --mac --arm64 --x64 --publish always
         timeout-minutes: 45
