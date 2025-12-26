@@ -213,9 +213,11 @@ export function MenuBarPopup() {
   };
 
   const handleStart = () => {
-    // When paused, resume the timer task
+    // When paused, resume the timer task (ensure organization_id is included)
     if (isPaused && timerTask) {
-      start(timerTask);
+      const orgId = timerTask.organization_id ?? selectedOrganizationId;
+      const taskWithOrg = { ...timerTask, organization_id: orgId ?? undefined };
+      start(taskWithOrg);
       return;
     }
     
@@ -285,7 +287,7 @@ export function MenuBarPopup() {
   return (
     <div className="menubar-popup">
       <div className="menubar-popup__header">
-        <img src={theme === 'dark' ? '/logo-icon-light.png' : '/logo-icon-dark.png'} alt="Trackerton" className="menubar-popup__logo" />
+        <img src={theme === 'dark' ? './logo-icon-light.png' : './logo-icon-dark.png'} alt="Trackerton" className="menubar-popup__logo" />
         <span className="menubar-popup__title">Trackerton</span>
         {isActive && (
           <div className={`menubar-popup__status ${isRunning ? 'menubar-popup__status--running' : 'menubar-popup__status--paused'}`}>

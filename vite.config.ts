@@ -31,6 +31,21 @@ export default defineConfig(({ command }) => {
   const isBuild = command === 'build'
   const sourcemap = isServe || !!process.env.VSCODE_DEBUG
 
+  // Copy electron support files to dist-electron (needed for both dev and build)
+  function copyElectronAssets() {
+    const electronFolders = ['db', 'models', 'controllers', 'ipcHandlers', 'constants', 'utils', 'assets']
+    for (const folder of electronFolders) {
+      const src = path.join(__dirname, 'electron', folder)
+      const dest = path.join(__dirname, 'dist-electron', folder)
+      copyDir(src, dest)
+    }
+  }
+
+  // Always copy assets during build
+  if (isBuild) {
+    copyElectronAssets()
+  }
+
   return {
     resolve: {
       alias: {
@@ -44,13 +59,8 @@ export default defineConfig(({ command }) => {
           // Shortcut of `build.lib.entry`
           entry: 'electron/main/index.ts',
           onstart(args) {
-            // Copy electron support files to dist-electron
-            const electronFolders = ['db', 'models', 'controllers', 'ipcHandlers', 'constants', 'utils', 'assets']
-            for (const folder of electronFolders) {
-              const src = path.join(__dirname, 'electron', folder)
-              const dest = path.join(__dirname, 'dist-electron', folder)
-              copyDir(src, dest)
-            }
+            // Copy electron support files to dist-electron (for dev mode)
+            copyElectronAssets()
             
             if (process.env.VSCODE_DEBUG) {
               console.log(/* For `.vscode/.debug.script.mjs` */'[startup] Electron App')

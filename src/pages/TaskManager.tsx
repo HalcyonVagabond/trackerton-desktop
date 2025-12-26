@@ -115,7 +115,7 @@ export function TaskManager() {
   }, [theme]);
 
   const loadingLogo = useMemo(
-    () => (theme === 'dark' ? '/logo-icon-light.png' : '/logo-icon-dark.png'),
+    () => (theme === 'dark' ? './logo-icon-light.png' : './logo-icon-dark.png'),
     [theme],
   );
 
@@ -697,8 +697,10 @@ export function TaskManager() {
             console.warn('Cannot start task: missing organization or project ID');
           }
         } else {
-          // Resume the current task
-          start(targetTask);
+          // Resume the current task (ensure organization_id is included)
+          const orgId = targetTask.organization_id ?? browsingOrganizationId;
+          const taskWithOrg = { ...targetTask, organization_id: orgId ?? undefined };
+          start(taskWithOrg);
         }
       } catch (error) {
         console.error('Failed to start timer', error);

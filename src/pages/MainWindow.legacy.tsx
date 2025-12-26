@@ -392,7 +392,7 @@ export function MainWindow() {
           ⚙
         </button>
         <h1 className="app-header__title">
-          <img src="/logo-icon-light.png" alt="Trackerton Logo" className="app-header__logo" />
+          <img src="./logo-icon-light.png" alt="Trackerton Logo" className="app-header__logo" />
           <span>Trackerton</span>
         </h1>
       </div>

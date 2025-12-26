@@ -274,7 +274,7 @@ export function NavPanel({
     <nav className="nav-panel">
       {/* App Logo */}
       <div className="nav-brand">
-        <img src={effectiveTheme === 'dark' ? '/logo-icon-light.png' : '/logo-icon-dark.png'} alt="Trackerton" className="nav-brand__logo" />
+        <img src={effectiveTheme === 'dark' ? './logo-icon-light.png' : './logo-icon-dark.png'} alt="Trackerton" className="nav-brand__logo" />
         <span className="nav-brand__title">Trackerton</span>
         <div style={{ marginLeft: 'auto', position: 'relative' }}>
           <button

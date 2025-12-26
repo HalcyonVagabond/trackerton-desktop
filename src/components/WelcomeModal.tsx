@@ -80,7 +80,7 @@ export function WelcomeModal() {
   const [currentStep, setCurrentStep] = useState(0); // 0 = welcome, 1-4 = tutorial steps
   const totalSteps = TUTORIAL_STEPS.length + 1;
   const { theme } = useTheme();
-  const logoSrc = theme === 'dark' ? '/logo-icon-light.png' : '/logo-icon-dark.png';
+  const logoSrc = theme === 'dark' ? './logo-icon-light.png' : './logo-icon-dark.png';
 
   useEffect(() => {
     const seenVersion = localStorage.getItem(STORAGE_KEY);

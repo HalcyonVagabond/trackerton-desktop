@@ -387,15 +387,16 @@ function createMainWindow() {
     },
   })
 
+  // Show the main window when ready (works for both dev and production)
+  mainWindow.once('ready-to-show', () => {
+    mainWindow!.show()
+    mainWindow!.focus()
+  })
+
   if (VITE_DEV_SERVER_URL) {
     mainWindow.loadURL(VITE_DEV_SERVER_URL)
     // Open devTool if the app is not packaged (commented out - use Cmd+Option+I to open manually)
     // mainWindow.webContents.openDevTools()
-    // Surface the main window automatically in development
-    mainWindow.once('ready-to-show', () => {
-      mainWindow!.show()
-      mainWindow!.focus()
-    })
   } else {
     mainWindow.loadFile(indexHtml)
   }
@@ -604,6 +605,9 @@ app.whenReady().then(async () => {
   createTray()
   createMenuBarWindow() // Small popup
   createMainWindow() // Full window
+  
+  // Update tray title to show restored timer state (if any)
+  updateTrayTitle()
   
   // Show a notification to confirm the app is running
   if (Notification.isSupported()) {
